@@ -10,7 +10,7 @@ public class TransactionFraudDetector {
             boolean newBeneficiary,
             String countryCode,
             String merchantCategory,
-            int transactionsLast24,
+            int transactionsLast24h,
             double averagePreviousAmount,
             Set<String> highRiskCountries,
             Set<String> blacklistedMerchants
@@ -31,7 +31,7 @@ public class TransactionFraudDetector {
             throw new IllegalArgumentException("Merchant category is required");
         }
 
-        if (transactionsLast24 < 0 || averagePreviousAmount < 0) {
+        if (transactionsLast24h < 0 || averagePreviousAmount < 0) {
             throw new IllegalArgumentException("Transaction history values cannot be negative");
         }
 
@@ -40,7 +40,7 @@ public class TransactionFraudDetector {
         }
 
         if (blacklistedMerchants.contains(merchantCategory)) {
-            return TransactionDecision.BLOKED;
+            return TransactionDecision.BLOCKED;
         }
 
         int riskScore = 0;
@@ -65,7 +65,7 @@ public class TransactionFraudDetector {
             riskScore += 30;
         }
 
-        if (transactionsLast24 > 10) {
+        if (transactionsLast24h > 10) {
             riskScore += 20;
         }
 
@@ -74,10 +74,10 @@ public class TransactionFraudDetector {
         }
 
         if (riskScore >= 90) {
-            return TransactionDecision.BLOKED;
-        } else if (riskScore >= 50) {
+            return TransactionDecision.BLOCKED;
+        } else if (riskScore >= 60) {
             return TransactionDecision.MANUAL_REVIEW;
-        } else if (riskScore >= 25) {
+        } else if (riskScore >= 30) {
             return TransactionDecision.REQUIRES_2FA;
         } else {
             return TransactionDecision.APPROVED;

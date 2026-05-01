@@ -4,5 +4,5 @@ public enum TransactionDecision {
     APPROVED,
     REQUIRES_2FA,
     MANUAL_REVIEW,
-    BLOKED
+    BLOCKED
 }
