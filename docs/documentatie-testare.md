@@ -189,15 +189,15 @@ Acoperirea a fost măsurată cu runner-ul IntelliJ IDEA, după rularea exclusiv�
 
 ![Detaliu ramuri neacoperite](screenshots/eq-partition/coverage-branches-detail.png)
 
-```java
-if (newBeneficiary && amount > 3000) { ... }
-if (highRiskCountries.contains(countryCode) && amount > 3000) { ... }
+```
+if (newBeneficiary && amount > 3000) {...}
+if (highRiskCountries.contains(countryCode) && amount > 3000) {...}
 ```
 
 În ambele cazuri lipsește subcombinația "operand stâng `true`, operand drept `false`", adică:
 
 - `newBeneficiary == true` și `amount <= 3000`
-- `countryCode ∈ highRiskCountries` și`amount <= 3000`
+- `countryCode ∈ highRiskCountries` și `amount <= 3000`
 
 Motivul este metodologic, nu o deficiență a partiționării. Tehnica de partiționare de echivalență este una
 **black-box**: clasele se derivă din specificație, iar specificația tratează cele două reguli de scor ca pe niște
