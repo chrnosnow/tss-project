@@ -207,6 +207,133 @@ care premisa primară este falsă (regula nu se aplică, scorul rămâne neschim
 
 Acoperirea completă pe ramuri se poate obține complementar, prin testare **white-box** (criteriul branch coverage).
 
+## Analiza valorilor de frontieră
+
+Testarea valorilor de frontieră (*Boundary Value Analysis*, BVA) completează partiționarea în clase de echivalență prin
+selectarea de date de test care exersează **marginile** fiecărui interval valid sau invalid și **punctele de
+comutație** ale regulilor de decizie. Defectele tipice care apar în pragul condițiilor (off-by-one, `<` vs `<=`) sunt
+descoperite cu probabilitate maximă atunci când datele de test cad exact pe valorile de frontieră sau la cel mai mic
+pas reprezentabil de o parte sau de alta a acestora.
+
+### Frontiere identificate
+
+Din specificația programului se desprind trei categorii de frontiere.
+
+**(F&#8209;V) Frontiere de validare** &ndash; capetele domeniului valid pentru fiecare parametru numeric (excepția se
+aruncă **strict în afara** acestui domeniu):
+
+| Parametru               | Limită inferioară valabilă | Limită superioară valabilă |
+|-------------------------|----------------------------|----------------------------|
+| `amount`                | `> 0` (excluziv)           | &ndash; (nemărginit)       |
+| `hourOfDay`             | `0` (incluziv)             | `23` (incluziv)            |
+| `transactionsLast24h`   | `0` (incluziv)             | &ndash; (nemărginit)       |
+| `averagePreviousAmount` | `0` (incluziv)             | &ndash; (nemărginit)       |
+
+**(F&#8209;S) Frontiere ale regulilor de scor** &ndash; pragurile la care se comută regulile aditive (toate sunt
+formulate cu inegalitate strictă `>`, deci frontiera însăși **nu** activează regula):
+
+| Regulă                                         | Prag    | Tip operator |
+|------------------------------------------------|---------|--------------|
+| `amount > 1000`                                | `1000`  | `>`          |
+| `amount > 5000`                                | `5000`  | `>`          |
+| `amount > 3000` (combinat cu `newBeneficiary`) | `3000`  | `>`          |
+| `amount > 3000` (combinat cu `highRiskCountries`) | `3000` | `>`          |
+| `hourOfDay < 6`                                | `6`     | `<`          |
+| `hourOfDay > 22`                               | `22`    | `>`          |
+| `transactionsLast24h > 10`                     | `10`    | `>`          |
+| `averagePreviousAmount > 0`                    | `0`     | `>`          |
+| `amount > 3 * averagePreviousAmount`           | `3 · avgPrev` | `>`     |
+
+**(F&#8209;D) Frontiere ale deciziilor** &ndash; praguri pe domeniul `riskScore` (toate sunt formulate cu `>=`, deci
+frontiera însăși **trece** în clasa de risc superioară):
+
+| Prag scor | Tranziție                       |
+|-----------|---------------------------------|
+| `30`      | `APPROVED` &rarr; `REQUIRES_2FA`  |
+| `60`      | `REQUIRES_2FA` &rarr; `MANUAL_REVIEW` |
+| `90`      | `MANUAL_REVIEW` &rarr; `BLOCKED`  |
+
+### Setul minimal de teste de frontieră
+
+Pentru fiecare frontieră generăm un **on&#8209;point** (chiar pe valoarea frontierei) și un **off&#8209;point** (la cel
+mai mic pas reprezentabil de partea cealaltă). Pentru variabile `int` pasul este `±1`; pentru sume monetare `double`
+folosim `±0.01` (cea mai mică unitate semnificativă pentru o monedă). Frontierele care implică condiții logice `&&`
+(de exemplu, `newBeneficiary && amount > 3000`) sunt testate cu cealaltă premisă fixată pe `true`, pentru ca regula să
+poată comuta în funcție de `amount`.
+
+**Constante** (identice cu cele din partiționarea în clase de echivalență):
+
+- `highRiskCountries = {"KP", "IR", "MM"}`, `blacklistedMerchants = {"GAMBLING", "CRYPTO_EXCHANGE", "FIREARMS"}`.
+
+**Baseline neutru** (valorile parametrilor nemodificați; produc `riskScore = 0` &rarr; `APPROVED`):
+
+- `amount = 100.0`, `hourOfDay = 12`, `newBeneficiary = false`, `countryCode = "RO"`,
+  `merchantCategory = "GROCERY STORES"`, `transactionsLast24h = 5`, `averagePreviousAmount = 10000.0`.
+
+`averagePreviousAmount` este intenționat mare (`10000`) pentru ca regula `amount > 3 · avgPrev` să **nu** se activeze
+accidental atunci când variem `amount`. Pentru testele dedicate acestei reguli redefinim local `avgPrev = 500`.
+
+#### Frontiere de validare (F&#8209;V)
+
+| Test  | Variabilă pe frontieră  | Valoare    | Tip punct                              | Rezultat așteptat          |
+|-------|-------------------------|------------|----------------------------------------|----------------------------|
+| TF&#8209;V1  | `amount`                | `0.0`      | off (chiar sub frontiera validă)       | `IllegalArgumentException` |
+| TF&#8209;V2  | `amount`                | `0.01`     | on (cea mai mică valoare validă)       | `APPROVED` (scor `0`)      |
+| TF&#8209;V3  | `hourOfDay`             | `-1`       | off (sub limita inferioară)            | `IllegalArgumentException` |
+| TF&#8209;V4  | `hourOfDay`             | `0`        | on (limită inferioară valabilă)        | `APPROVED` (scor `15`, nocturn de jos) |
+| TF&#8209;V5  | `hourOfDay`             | `23`       | on (limită superioară valabilă)        | `APPROVED` (scor `15`, nocturn de sus) |
+| TF&#8209;V6  | `hourOfDay`             | `24`       | off (peste limita superioară)          | `IllegalArgumentException` |
+| TF&#8209;V7  | `transactionsLast24h`   | `-1`       | off (sub limita inferioară)            | `IllegalArgumentException` |
+| TF&#8209;V8  | `transactionsLast24h`   | `0`        | on (limită inferioară valabilă)        | `APPROVED` (scor `0`)      |
+| TF&#8209;V9  | `averagePreviousAmount` | `-0.01`    | off (sub limita inferioară)            | `IllegalArgumentException` |
+| TF&#8209;V10 | `averagePreviousAmount` | `0.0`      | on (limită inferioară; regula multiplului dezactivată) | `APPROVED` (scor `0`) |
+
+**Observație.** TF&#8209;V4 și TF&#8209;V5 acoperă simultan câte o frontieră (F&#8209;V) și câte una de scor
+(F&#8209;S, regulile `< 6` și `> 22` se activează la aceste valori); economisim astfel două teste fără să sacrificăm
+acoperirea.
+
+#### Frontiere ale regulilor de scor (F&#8209;S)
+
+| Test  | Variabile pe frontieră | Valori cheie       | Tip punct                                   | Scor așteptat | Rezultat așteptat     |
+|-------|------------------------|--------------------|---------------------------------------------|---------------|-----------------------|
+| TF&#8209;S1  | `amount`               | `1000.0`           | on (`> 1000` NU se activează)               | `0`           | `APPROVED`            |
+| TF&#8209;S2  | `amount`               | `1000.01`          | off (`> 1000` se activează: `+10`)          | `10`          | `APPROVED`            |
+| TF&#8209;S3  | `amount`               | `5000.0`           | on (`> 5000` NU se activează; `> 1000` da)  | `10`          | `APPROVED`            |
+| TF&#8209;S4  | `amount`               | `5000.01`          | off (`> 5000` se activează: `+10 + 20`)     | `30`          | `REQUIRES_2FA`        |
+| TF&#8209;S5  | `amount`, `newBeneficiary=true` | `3000.0`  | on (regula `newBen && > 3000` NU se activează) | `10`        | `APPROVED`            |
+| TF&#8209;S6  | `amount`, `newBeneficiary=true` | `3000.01` | off (regula se activează: `+10 + 25`)       | `35`          | `REQUIRES_2FA`        |
+| TF&#8209;S7  | `hourOfDay`            | `5`                | on (`< 6` se activează: `+15`)              | `15`          | `APPROVED`            |
+| TF&#8209;S8  | `hourOfDay`            | `6`                | off (`< 6` NU se activează)                 | `0`           | `APPROVED`            |
+| TF&#8209;S9  | `hourOfDay`            | `22`               | off (`> 22` NU se activează)                | `0`           | `APPROVED`            |
+| TF&#8209;S10 | `transactionsLast24h`  | `10`               | on (`> 10` NU se activează)                 | `0`           | `APPROVED`            |
+| TF&#8209;S11 | `transactionsLast24h`  | `11`               | off (`> 10` se activează: `+20`)            | `20`          | `APPROVED`            |
+| TF&#8209;S12 | `amount` cu `avgPrev=500.0` | `1500.0`      | on (`amount > 3 · avgPrev` NU se activează; `> 1000` da) | `10` | `APPROVED`        |
+| TF&#8209;S13 | `amount` cu `avgPrev=500.0` | `1500.01`     | off (regula se activează: `+10 + 25`)       | `35`          | `REQUIRES_2FA`        |
+
+**Observație.** Frontiera `amount > 3000` cu `highRiskCountries.contains(countryCode)` este simetrică cu cea testată în
+TF&#8209;S5/S6 (același prag, același tip de operator, regulă activată cu `+30` în loc de `+25`); o testăm implicit în
+testele de prag de decizie de mai jos (TF&#8209;D4, TF&#8209;D6).
+
+#### Frontiere ale deciziilor (F&#8209;D)
+
+Pragurile `30`, `60`, `90` se compară cu `>=`, deci frontiera însăși *trece* în clasa superioară. Deoarece toate
+incrementele de scor sunt multipli de 5, valorile imediat sub praguri (off&#8209;point) sunt `25`, `55`, `85` (cele mai
+mari scoruri reprezentabile sub fiecare prag).
+
+| Test  | Combinație de reguli activate                                                       | Scor calculat | Tip punct          | Rezultat așteptat |
+|-------|-------------------------------------------------------------------------------------|---------------|--------------------|-------------------|
+| TF&#8209;D1 | `amount = 1500` (`+10`) + `hour = 23` (`+15`)                                     | `25`          | off (sub `30`)     | `APPROVED`        |
+| TF&#8209;D2 | `amount = 5500` (`+10 + 20`)                                                       | `30`          | on (`>= 30`)       | `REQUIRES_2FA`    |
+| TF&#8209;D3 | `amount = 5500` + `newBeneficiary = true` (`+10 + 20 + 25`)                        | `55`          | off (sub `60`)     | `REQUIRES_2FA`    |
+| TF&#8209;D4 | `amount = 5500` + `countryCode = "KP"` (`+10 + 20 + 30`)                           | `60`          | on (`>= 60`)       | `MANUAL_REVIEW`   |
+| TF&#8209;D5 | `amount = 4000` + `newBeneficiary = true` + `country = "KP"` + `tx24 = 11` (`+10 + 25 + 30 + 20`) | `85` | off (sub `90`) | `MANUAL_REVIEW` |
+| TF&#8209;D6 | `amount = 5500` + `newBeneficiary = true` + `hour = 23` + `tx24 = 11` (`+10 + 20 + 25 + 15 + 20`) | `90` | on (`>= 90`)   | `BLOCKED`         |
+
+**Sinteză.** Setul minimal cuprinde **29 teste** &ndash; 10 pentru frontierele de validare (F&#8209;V), 13 pentru
+frontierele regulilor de scor (F&#8209;S) și 6 pentru frontierele deciziilor (F&#8209;D). Spre comparație, suita de
+partiționare de echivalență conține 16 teste; creșterea este intrinsecă tehnicii BVA, care necesită un on&#8209;point
+și un off&#8209;point pentru fiecare prag identificat în specificație.
+
 ## Bibliografie
 
 1. <a id="bibliografie"></a>**Financial Action Task Force (FATF)**, *High-Risk Jurisdictions subject to a Call for
