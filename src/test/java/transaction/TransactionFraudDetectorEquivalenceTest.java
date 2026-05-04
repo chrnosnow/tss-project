@@ -1,3 +1,5 @@
+package transaction;
+
 import facultate.tss.TransactionDecision;
 import facultate.tss.TransactionFraudDetector;
 import org.junit.jupiter.api.Test;

@@ -1,4 +1,4 @@
-# Raport AI &mdash; comparație suite de teste proprii vs. autogenerate
+# Raport AI &ndash; comparație suite de teste proprii vs. autogenerate
 
 Raportul de față documentează **utilizarea unui asistent AI** (ChatGPT) pentru generarea
 automată de suite de teste unitare pentru clasa `facultate.tss.TransactionFraudDetector`
@@ -26,7 +26,7 @@ Pentru generarea automată a suitei de teste prin partiționare în clase de ech
 folosit **ChatGPT** (modelul GPT-5.3, interfața web, conversație din 03.05.2026). Captura
 integrală a dialogului este arhivată în
 [
-`screenshots/ai/eq-screencapture-chatgpt-c-69f71939-7070-83eb-bb1b-39926fd91f64-2026-05-03-12_51_58.pdf`](screenshots/ai/eq-screencapture-chatgpt-c-69f71939-7070-83eb-bb1b-39926fd91f64-2026-05-03-12_51_58.pdf).
+`screenshots/ai/eq-bva-screencapture-chatgpt-c-69f71939-7070-83eb-bb1b-39926fd91f64-2026-05-04-21_43_59.pdf`](screenshots/ai/eq-bva-screencapture-chatgpt-c-69f71939-7070-83eb-bb1b-39926fd91f64-2026-05-04-21_43_59.pdf).
 
 ChatGPT a fost ales pentru că este un *Large Language Model* generalist, antrenat pe
 volume mari de date textuale și multimodale, inclusiv date de cod, provenite din surse publice,
@@ -167,9 +167,7 @@ partiții.
 | O4 `BLOCKED` prin scor       | TV4                     | `shouldBlockForVeryHighRiskScore`                                       |
 | O5 `BLOCKED` prin blacklist  | TV5                     | `shouldBlockImmediatelyForBlacklistedMerchant`                          |
 
-### Interpretare
-
-ChatGPT a produs o suită **funcțională, dar incompletă și parțial incorectă**:
+ChatGPT a produs o suită **incompletă și parțial incorectă**:
 
 - **Puncte forte**: sintaxă JUnit 5 corectă, separare clară între validări și reguli
   funcționale, izolarea clasei `I10` într-un singur test (un singur `null` per apel),
@@ -191,13 +189,71 @@ ChatGPT a produs o suită **funcțională, dar incompletă și parțial incorect
    să slăbească verificarea în loc să aleagă date de intrare care produc un scor
    neambiguu.
 
-**Concluzie practică.** Generarea automată cu ChatGPT este utilă ca *schiță de plecare*
-care economisește timp pe sintaxa JUnit, dar **nu poate înlocui** derivarea manuală a
-claselor de echivalență din specificație. În acest proiect, suita proprie are de două ori
-mai multe teste pentru clasele invalide și include trasabilitate explicită către
-documentație; suita AI ar trece test review-ul doar după completări semnificative (≥6
-teste lipsă), corectarea oracolului testului picat și înlocuirea aserțiunii permisive cu
-o aserțiune de egalitate strictă.
+## Analiza valorilor de frontieră
+
+### Tool și prompt
+
+Aceeași sesiune ChatGPT din secțiunea anterioară, continuată cu o cerere nouă (arhiva
+completă a conversației este în
+[
+`screenshots/ai/eq-bva-screencapture-chatgpt-c-69f71939-7070-83eb-bb1b-39926fd91f64-2026-05-04-21_43_59.pdf`](screenshots/ai/eq-bva-screencapture-chatgpt-c-69f71939-7070-83eb-bb1b-39926fd91f64-2026-05-04-21_43_59.pdf)):
+
+> *Scrie acum si setul minim de teste pentru analiza valorilor de frontiera, cu aceeasi
+> librarie.*
+
+Specificația rămăsese în context din promptul anterior, deci nu a mai fost recopiată.
+
+### Răspuns și rulare
+
+ChatGPT a livrat **16 metode de test** (transcrise în
+[`src/test/java/ai/AiBvaTest.java`](../src/test/java/ai/AiBvaTest.java)): 11 teste de
+validare la frontieră (`amount`, `hour`, `tx`, `avg`), 4 teste de prag pe `amount`
+(`1000`, `1000.01`, `5000`, `5000.01`) și 1 test pe frontiera nocturnă `hour = 5/6`
+&mdash; **acesta a picat**:
+
+![Rulare teste AI BVA &mdash; 15 trec, 1 pică](screenshots/ai/ai-bva-tests.jpg)
+
+```
+org.opentest4j.AssertionFailedError: expected: not equal but was: <APPROVED>
+at ai.AiBvaTest.hourNightBoundary(AiBvaTest.java:156)
+```
+
+Testul `hourNightBoundary` verifică faptul că deciziile la `hour = 6` (zi) și
+`hour = 5` (noapte) nu sunt egale, presupunând că trecerea peste pragul `hour < 6` modifică decizia. La
+inputurile alese (baseline `amount = 100`), însă, scorul rămâne sub pragul `30` în ambele
+cazuri (`0` la zi, `15` la noapte), iar decizia este `APPROVED`. Modelul a confundat
+**frontiera regulii de scor** (`hour < 6` adaugă `+15`) cu **frontiera deciziei**
+(`riskScore >= 30` schimbă clasa). Testul a fost comentat pentru a permite rularea cu
+acoperire.
+
+### Comparație cu suita proprie
+
+Suita proprie (`TransactionFraudDetectorBoundaryTest`, **29 teste**) acoperă sistematic
+cele trei categorii F-V / F-S / F-D; suita AI (**16 teste, 1 picat**) acoperă parțial
+F-V, doar 4 din 13 frontiere F-S, iar **F-D lipsește integral**.
+
+| Categorie                      | Suită proprie | Suită AI                                                        |
+|--------------------------------|---------------|-----------------------------------------------------------------|
+| F-V invalide                   | 5             | 6 (1 redundantă: `amount = -0.01` + `amount = 0` aceeași clasă) |
+| F-V valide                     | 5             | 5 (doar `assertDoesNotThrow`, fără verificarea deciziei)        |
+| F-S `amount > 1000` / `> 5000` | 4             | 4 (3 cu aserțiuni permisive: `assertNotEquals`, `assertTrue ‖`) |
+| F-S `newBen && amount > 3000`  | 2             | **0**                                                           |
+| F-S `hour < 6` / `> 22`        | 4             | 1 picat (comentat)                                              |
+| F-S `tx > 10`                  | 2             | **0**                                                           |
+| F-S `amount > 3 · avgPrev`     | 2             | **0** (activată însă prin baseline `AVG = 100`)                 |
+| F-D praguri `30` / `60` / `90` | 6             | **0**                                                           |
+| Teste care **trec**            | 29 / 29       | 15 / 16                                                         |
+
+Suita AI BVA introduce două probleme specifice:
+
+1. **Confuzia frontieră-de-regulă vs. frontieră-de-decizie.** Modelul a tratat o variație de scor ca implicând
+   automat o variație de decizie, ipoteză falsă când scorurile rămân de aceeași parte a
+   unui prag de decizie. Consecința: F-D lipsește integral (nicio combinație de reguli
+   activate care să exerseze pragurile `30` / `60` / `90`).
+2. **Valoarea implicită `AVG = 100`** activează nedorit regula `amount > 3 * avgPrev`
+   pentru orice `amount > 300`, deci toate testele de prag pe
+   `amount` includ implicit un `+25`, iar testele pot trece din motive
+   greșite (scor compus diferit de cel intenționat).
 
 ## Bibliografie
 
