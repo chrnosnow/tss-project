@@ -255,6 +255,74 @@ Suita AI BVA introduce două probleme specifice:
    `amount` includ implicit un `+25`, iar testele pot trece din motive
    greșite (scor compus diferit de cel intenționat).
 
+## Testare structurală
+
+### Acoperire la nivel de instrucțiune
+
+#### Tool și prompt
+
+Pentru această tehnică am folosit o sesiune ChatGPT nouă, cu același model GPT-5.3. Captura integrală a dialogului
+este arhivată în
+[
+`screenshots/ai/struct-screencapture-chatgpt-c-69fa4210-9304-8325-a872-f1ea7e63f78b-2026-05-05-22_18_57.pdf`](screenshots/ai/struct-screencapture-chatgpt-c-69fa4210-9304-8325-a872-f1ea7e63f78b-2026-05-05-22_18_57.pdf).
+Promptul a urmat aceeași abordare *zero-shot*: cerere scurtă pentru setul minim de teste
+care să atingă acoperirea la nivel de instrucțiune, folosind JUnit 5, urmată de clasa integrală
+`TransactionFraudDetector` .
+
+#### Răspuns și rulare
+
+ChatGPT a generat **8 metode de test** (transcrise în
+[`src/test/java/ai/AiCovStatemTest.java`](../src/test/java/ai/AiCovStatemTest.java)): 3 pentru excepții,
+1 pentru scurtcircuitul prin blacklist și 4 pentru deciziile finale (`APPROVED`, `REQUIRES_2FA`,
+`MANUAL_REVIEW`, `BLOCKED` prin scor). La rulare, 7 din 8 teste trec, iar
+`shouldRequireManualReview` pică:
+
+![Rulare teste AI statement coverage &mdash; 7 trec, 1 pică](screenshots/ai/ai-cov-statem-tests.jpg)
+
+```
+org.opentest4j.AssertionFailedError:
+Expected :MANUAL_REVIEW
+Actual   :BLOCKED
+at ai.AiCovStatemTest.shouldRequireManualReview(AiCovStatemTest.java:97)
+```
+
+Pentru intrările alese (`amount = 6000`, `hour = 23`, `newBen = true`, `country = "RO"`, `tx24 = 5`,
+`avg = 100`), comentariul modelului estima un scor de `80` și încadra rezultatul în `MANUAL_REVIEW`, dar a
+omis din nou regula `amount > 3 * avgPrev` (`6000 > 300`), care adaugă încă `+25`, urcând
+scorul real la `95` și schimbând decizia în `BLOCKED`. Aceeași limitare aritmetică observată la suita EP
+(testul `shouldRequire2FAForMediumRisk`) se manifestă și aici, pe aceeași regulă.
+
+#### Comparație cu suita proprie
+
+Suita proprie (`TransactionFraudDetectorStatementCoverageTest`, 11 teste) acoperă fiecare instrucțiune
+executabilă a metodei `evaluateTransaction`. Suita AI (8 teste) lasă neacoperite mai multe instrucțiuni țintă:
+
+| Instrucțiune țintă                                 | Suită proprie | Suită AI                                              |
+|----------------------------------------------------|---------------|-------------------------------------------------------|
+| `throw` din validarea `amount`                     | TS1           | `shouldThrowExceptionForInvalidAmount`                |
+| `throw` din validarea `hourOfDay`                  | TS2           | `shouldThrowExceptionForInvalidHour`                  |
+| `throw` din validarea `countryCode`                | TS3           | `shouldThrowExceptionForNullCountry`                  |
+| `throw` din validarea `merchantCategory`           | TS4           | **lipsă**                                             |
+| `throw` din validarea istoricului (`tx24` / `avg`) | TS5           | **lipsă**                                             |
+| `throw` din validarea seturilor `null`             | TS6           | **lipsă** (folosește `Set.of()` peste tot, nu `null`) |
+| `return BLOCKED` din scurtcircuitul blacklist      | TS7           | `shouldBlockBlacklistedMerchant`                      |
+| Toate `riskScore += ...` + corpul `for` (`break`)  | TS8           | `shouldBlockHighRiskTransaction`                      |
+| `return APPROVED`                                  | TS9           | `shouldApproveLowRiskTransaction`                     |
+| `return REQUIRES_2FA`                              | TS10          | `shouldRequire2FA`                                    |
+| `return MANUAL_REVIEW`                             | TS11          | `shouldRequireManualReview` &ndash; picat             |
+| Teste care trec                                    | 11 / 11       | 7 / 8 (1 picat, comentat pentru rulare)               |
+
+Probleme specifice ale suitei AI pe acest criteriu:
+
+1. **Subacoperire pe blocurile `throw`** (3/6): lipsesc validările pentru `merchantCategory`, istoric
+   (`tx24 < 0` / `avg < 0`) și seturi `null`. Modelul a folosit consecvent `Set.of()` (set gol valid) în loc
+   de `null`, deci validarea `highRiskCountries == null` / `blacklistedMerchants == null` nu este atinsă de
+   niciun test.
+2. **Returnul `MANUAL_REVIEW` neacoperit**: singurul test pentru această decizie pică din cauza
+   aceleiași omisiuni a regulii multiplului mediei observate la suita EP. Pentru a permite rularea cu
+   acoperire, testul a fost comentat (similar cu `hourNightBoundary` din suita BVA), deci instrucțiunea
+   `return MANUAL_REVIEW` rămâne neexecutată de suita AI.
+
 ## Bibliografie
 
 1. <a id="bibliografie"></a>**OpenAI**, *How ChatGPT and our foundation models are developed*. Disponibil online

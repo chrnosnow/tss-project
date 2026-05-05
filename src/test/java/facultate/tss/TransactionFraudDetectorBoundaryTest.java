@@ -1,4 +1,4 @@
-package transaction;
+package facultate.tss;
 
 import facultate.tss.TransactionDecision;
 import facultate.tss.TransactionFraudDetector;
