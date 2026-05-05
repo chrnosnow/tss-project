@@ -61,7 +61,14 @@ public class TransactionFraudDetector {
             riskScore += 25;
         }
 
-        if (highRiskCountries.contains(countryCode) && amount > 3000) {
+        boolean isHighRiskCountry = false;
+        for (String country : highRiskCountries) {
+            if (country.equals(countryCode)) {
+                isHighRiskCountry = true;
+                break;
+            }
+        }
+        if (isHighRiskCountry && amount > 3000) {
             riskScore += 30;
         }
 
