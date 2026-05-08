@@ -1,7 +1,5 @@
 package facultate.tss;
 
-import facultate.tss.TransactionDecision;
-import facultate.tss.TransactionFraudDetector;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
