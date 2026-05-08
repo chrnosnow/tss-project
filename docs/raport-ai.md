@@ -323,6 +323,90 @@ Probleme specifice ale suitei AI pe acest criteriu:
    acoperire, testul a fost comentat (similar cu `hourNightBoundary` din suita BVA), deci instrucțiunea
    `return MANUAL_REVIEW` rămâne neexecutată de suita AI.
 
+### Acoperire la nivel de decizie (ramură)
+
+#### Tool și prompt
+
+Aceeași sesiune ChatGPT din secțiunea anterioară, continuată cu o cerere nouă (arhiva
+completă a conversației, actualizată după acest schimb, este în același fișier
+[
+`screenshots/ai/struct-screencapture-chatgpt-c-69fa4210-9304-8325-a872-f1ea7e63f78b-2026-05-05-22_18_57.pdf`](screenshots/ai/struct-screencapture-chatgpt-c-69fa4210-9304-8325-a872-f1ea7e63f78b-2026-05-05-22_18_57.pdf)):
+
+> *Genereaza setul minim de teste unitare pentru acoperirea la nivel de decizie (ramura).*
+
+Codul-sursă al clasei `TransactionFraudDetector` rămăsese în context din promptul anterior, deci nu a mai
+fost recopiat.
+
+#### Răspuns și rulare
+
+ChatGPT a generat **12 metode de test** (transcrise în
+[`src/test/java/ai/AiCovDecisionTest.java`](../src/test/java/ai/AiCovDecisionTest.java)): 6 pentru cele
+șase blocuri `throw`, 1 pentru scurtcircuitul prin blacklist, 4 pentru cele patru decizii finale
+(`APPROVED`, `REQUIRES_2FA`, `MANUAL_REVIEW`, `BLOCKED` prin scor) și 1 test suplimentar
+(`highRiskCountryNotMatched`) care exersează ramura în care bucla `for` peste `highRiskCountries` se
+încheie fără potrivire (cu set ne-vid). La rulare, **9 din 12 teste trec**, iar `manualReview`,
+`requires2FA` și `highRiskCountryNotMatched` pică:
+
+![Rulare teste AI decision coverage &mdash; 9 trec, 3 pică](screenshots/ai/ai-cov-decision-tests.jpg)
+
+```
+Expected :MANUAL_REVIEW       Expected :REQUIRES_2FA       Expected :REQUIRES_2FA
+Actual   :BLOCKED             Actual   :APPROVED           Actual   :APPROVED
+at AiCovDecisionTest.manualReview(:145)
+at AiCovDecisionTest.requires2FA(:130)
+at AiCovDecisionTest.highRiskCountryNotMatched(:175)
+```
+
+Cele trei eșecuri se reduc la aceeași limitare aritmetică observată și la celelalte suitede teste: modelul fie omite,
+fie aplică incorect regula `amount > 3 * averagePreviousAmount`:
+
+- `manualReview` (`amount = 6000`, `newBen = true`, `avg = 1000`): modelul a calculat `+10 + 20 + 15 + 25 = 70`
+  &rarr; `MANUAL_REVIEW`, dar a omis `+25` din regula multiplului (`6000 > 3 · 1000`); scorul real este `95`
+  &rarr; `BLOCKED`.
+- `requires2FA` (`amount = 1500`, `hour = 23`, `avg = 1000`): modelul a aproximat scorul peste `30`, dar
+  niciuna dintre regulile `+25` (newBeneficiary, multiplul mediei) nu se activează (`1500 ≤ 3000`,
+  `1500 ≤ 3 · 1000`); scorul real este `25` &rarr; `APPROVED`.
+- `highRiskCountryNotMatched` (`amount = 4000`, `avg = 5000`): modelul a presupus că pragul `> 5000` se
+  activează, dar `4000 < 5000`; cu `newBen = false` și `RO ∉ {IR, RU}`, doar `+10` (`> 1000`) se aplică,
+  scor `10` &rarr; `APPROVED`.
+
+#### Comparație cu suita proprie
+
+Suita proprie (`TransactionFraudDetectorStatementCoverageTest`, 11 teste) satisface integral și
+acoperirea la nivel de decizie, prin construcție (vezi tabelul de trasabilitate decizie &harr; test din
+[`documentatie-testare.md`](documentatie-testare.md)). Suita AI (12 teste, 3 picate) ar fi acoperit teoretic
+toate cele 38 de ramuri dacă oracolele ar fi fost corecte; cu doar cele **9 teste care trec**, rămân
+neacoperite ramurile `true` ale deciziilor finale `D18` (`riskScore >= 60` &rarr; `MANUAL_REVIEW`) și
+`D19` (`riskScore >= 30` &rarr; `REQUIRES_2FA`):
+
+| Decizie                                            | Suită proprie  | Suită AI (teste care trec)                                                                                   |
+|----------------------------------------------------|----------------|--------------------------------------------------------------------------------------------------------------|
+| D1&ndash;D6 (cele 6 blocuri `throw`)               | TS1&ndash;TS6  | `invalidAmount`, `invalidHour`, `invalidCountry`, `invalidMerchant`, `negativeHistoryValues`, `nullRiskSets` |
+| D7 (scurtcircuit blacklist)                        | TS7            | `blacklistedMerchant`                                                                                        |
+| D12 (intrare în `for`) + D13 (potrivire + `break`) | TS8            | `blockedHighRiskTransaction` (`country = "IR"`, match)                                                       |
+| D12 (parcurgere completă, fără `break`)            | TS9&ndash;TS11 | `approvedTransaction` (`country = "RO"`, fără potrivire)                                                     |
+| D17 ramura `true` (`BLOCKED` prin scor)            | TS8            | `blockedHighRiskTransaction` (scor `145`)                                                                    |
+| D18 ramura `true` (`MANUAL_REVIEW`)                | TS11           | `manualReview` &mdash; **picat**, ramură neacoperită                                                         |
+| D19 ramura `true` (`REQUIRES_2FA`)                 | TS10           | `requires2FA` &mdash; **picat**; `highRiskCountryNotMatched` &mdash; **picat**, ramură neacoperită           |
+| D19 ramura `false` (`APPROVED`)                    | TS9            | `approvedTransaction`                                                                                        |
+| Teste care trec                                    | 11 / 11        | 9 / 12                                                                                                       |
+| Acoperire la nivel de decizie                      | 38 / 38        | 36 / 38 (≈ 94.7%)                                                                                            |
+
+Probleme specifice ale suitei AI pe acest criteriu:
+
+1. **Două ramuri finale neacoperite**: din cele 4 clase de decizie partiționate de `D17 / D18 / D19`,
+   suita AI acoperă în execuția cu succes doar `APPROVED` și `BLOCKED`. `REQUIRES_2FA` și `MANUAL_REVIEW`
+   rămân neexecutate, deoarece toate cele trei teste care le țintesc pică cu același tip de eroare
+   aritmetică pe regula multiplului mediei.
+2. **Limitare aritmetică recurentă**: apare aceeași omisiune a regulii `amount > 3 * averagePreviousAmount`
+   , confirmând empiric că modelul nu simulează execuția programului, ci aproximează scorul citind specificația/codul,
+   iar pe combinații cu 4&ndash;5 reguli active probabilitatea de eroare devine semnificativă [[5]](#bibliografie).
+3. Suita AI îmbunătățește marginal trasabilitatea pe bucla `for` față de suita
+   proprie. `blockedHighRiskTransaction` (`country = "IR"`) și `highRiskCountryNotMatched`
+   (`highRiskCountries = {"IR", "RU"}`, `country = "RO"`) separă explicit cele două ramuri ale deciziei
+   `D13` (`country.equals(countryCode)` &mdash; `true` cu `break` vs. `false` cu parcurgere completă), în
+   timp ce TS9&ndash;TS11 le exersează doar implicit, prin `country = "RO"` într-un set unic `{"KP", "IR", "MM"}`.
+
 ## Bibliografie
 
 1. <a id="bibliografie"></a>**OpenAI**, *How ChatGPT and our foundation models are developed*. Disponibil online

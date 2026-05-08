@@ -549,13 +549,95 @@ de acoperirea la nivel de instrucțiune; cele 11 teste TS1&ndash;TS11 satisfac s
 clasa `TransactionFraudDetectorStatementCoverageTest` poate fi reutilizată ca atare pentru verificarea
 acoperirii la nivel de decizie.
 
-> **Observație terminologică.** Metricul *Branch %* raportat de IntelliJ IDEA pentru această suită
+> **Observație** Coloana *Branch %* raportată de IntelliJ IDEA pentru această suită
 > (83% &ndash; vezi sub-secțiunea anterioară) nu corespunde criteriului de acoperire definit aici,
 > ci unei variante mai stricte care contorizează separat sub-evaluările atomice ale operanzilor `&&` și `||`
 > (apropiată de acoperirea la nivel de condiție). Cele 9 sub-ramuri rămase neacoperite (`56 - 47`) se află exact pe
 > sub-condițiile compuse, de exemplu `newBeneficiary = true && amount ≤ 3000` din D11 sau `hour < 6 = true`
 > din D10 &ndash; sub-evaluări care nu sunt vizibile la nivel de decizie agregată și care fac obiectul unui
 > criteriu structural separat (e.g. acoperirea la nivel de condiție).
+
+### Setul minimal de teste pentru acoperirea la nivel de condiție
+
+Acoperirea la nivel de condiție cere ca fiecare condiție individuală dintr-o expresie
+booleană de control să fie evaluată cu rezultatul `true` și cu rezultatul `false` cel puțin câte o dată.
+Pentru deciziile compuse cu `&&` / `||`, fiecare operand trebuie să comute independent.
+
+#### Inventarul condițiilor individuale
+
+Din cele 19 decizii enumerate anterior, 10 sunt simple (1 condiție individuală) și 9 sunt compuse
+(2 condiții individuale fiecare, cu `&&` sau `||`). Reies astfel 28 de condiții individuale, deci 56 de combinații
+condiție × valoare de acoperit (exact numărul afișat de IntelliJ în coloana *Branch*).
+
+| Decizie compusă | Operator | Condiție individuală stânga | Condiție individuală dreapta   |
+|-----------------|----------|-----------------------------|--------------------------------|
+| D2              | `\|\|`   | `hourOfDay < 0`             | `hourOfDay > 23`               |
+| D3              | `\|\|`   | `countryCode == null`       | `countryCode.isBlank()`        |
+| D4              | `\|\|`   | `merchantCategory == null`  | `merchantCategory.isBlank()`   |
+| D5              | `\|\|`   | `transactionsLast24h < 0`   | `averagePreviousAmount < 0`    |
+| D6              | `\|\|`   | `highRiskCountries == null` | `blacklistedMerchants == null` |
+| D10             | `\|\|`   | `hourOfDay < 6`             | `hourOfDay > 22`               |
+| D11             | `&&`     | `newBeneficiary`            | `amount > 3000`                |
+| D14             | `&&`     | `isHighRiskCountry`         | `amount > 3000`                |
+| D16             | `&&`     | `averagePreviousAmount > 0` | `amount > avgPrev * 3`         |
+
+#### Combinațiile condiție inidividuală &times; valoare neacoperite de TS1&ndash;TS11
+
+Setul TS1&ndash;TS11 (suficient pentru acoperirea la nivel de instrucțiune și decizie) acoperă
+47 din 56 combinații. Cele 9 rămase neacoperite sunt exact lacunele raportate de IntelliJ pe *Branch %* (`56 − 47 = 9`):
+
+| #  | Decizie | Combinație condiție individuală × valoare neacoperită           | Cauza în TS1&ndash;TS11                                                               |
+|----|---------|-----------------------------------------------------------------|---------------------------------------------------------------------------------------|
+| C1 | D2      | `hourOfDay < 0 = true`                                          | TS2 atinge doar `hour = 24` (a doua subexpresie); `hour < 0` nu apare nicăieri        |
+| C2 | D3      | `countryCode.isBlank() = true` (cu `country != null`)           | TS3 folosește `null`; nu există test cu șir `blank`                                   |
+| C3 | D4      | `merchantCategory.isBlank() = true` (cu `merchant != null`)     | TS4 folosește `null`; nu există test cu șir `blank`                                   |
+| C4 | D5      | `averagePreviousAmount < 0 = true` (cu `tx24 ≥ 0`)              | TS5 atinge doar `tx24 = -1`                                                           |
+| C5 | D6      | `blacklistedMerchants == null = true` (cu `highRisk != null`)   | TS6 atinge doar `highRiskCountries = null`                                            |
+| C6 | D10     | `hourOfDay < 6 = true`                                          | TS-urile non-throw au `hour ∈ {12, 23}`                                               |
+| C7 | D11     | `amount > 3000 = false` evaluat când `newBeneficiary = true`    | TS8/TS11 au `newBen=true` cu `amount > 3000`; restul au `newBen=false` (scurtcircuit) |
+| C8 | D14     | `amount > 3000 = false` evaluat când `isHighRiskCountry = true` | TS8 are `country=KP` cu `amount > 3000`; restul au `country=RO` (`isHighRisk=false`)  |
+| C9 | D16     | `averagePreviousAmount > 0 = false`                             | Toate testele non-throw au `avgPrev ∈ {50, 100, 2000, 10000}`                         |
+
+#### Teste suplimentare pentru acoperirea condițiilor lipsă
+
+Cele 5 lacune din blocurile de validare (C1&ndash;C5) impun **5 teste distincte** (fiecare excepție părăsește
+metoda imediat). Cele 4 lacune din regulile de scor (C6&ndash;C9) pot fi consolidate într-un singur test
+care le exersează simultan:
+
+| Test | Țintă (atom × valoare)                                            | `amount` | `hour` | `newBen` | `country`      | `merchant`  | `tx24` | `avgPrev` | `highRisk` | `blacklist`    | Rezultat așteptat                |
+|------|-------------------------------------------------------------------|----------|--------|----------|----------------|-------------|--------|-----------|------------|----------------|----------------------------------|
+| TC1  | C1: `hourOfDay < 0 = true`                                        | `100`    | `-1`   | `false`  | `"RO"`         | `"GROCERY"` | `5`    | `50.0`    | `{"KP"}`   | `{"GAMBLING"}` | `IllegalArgumentException`       |
+| TC2  | C2: `countryCode.isBlank() = true`                                | `100`    | `12`   | `false`  | `"  "`         | `"GROCERY"` | `5`    | `50.0`    | `{"KP"}`   | `{"GAMBLING"}` | `IllegalArgumentException`       |
+| TC3  | C3: `merchantCategory.isBlank() = true`                           | `100`    | `12`   | `false`  | `"RO"`         | `""`        | `5`    | `50.0`    | `{"KP"}`   | `{"GAMBLING"}` | `IllegalArgumentException`       |
+| TC4  | C4: `averagePreviousAmount < 0 = true` (cu `tx24 ≥ 0`)            | `100`    | `12`   | `false`  | `"RO"`         | `"GROCERY"` | `5`    | `-1.0`    | `{"KP"}`   | `{"GAMBLING"}` | `IllegalArgumentException`       |
+| TC5  | C5: `blacklistedMerchants == null = true` (cu `highRisk != null`) | `100`    | `12`   | `false`  | `"RO"`   <br/> | `"GROCERY"` | `5`    | `50.0`    | `{"KP"}`   | `null`         | `IllegalArgumentException`       |
+| TC6  | C6, C7, C8, C9 simultan                                           | `2000`   | `3`    | `true`   | `"KP"`         | `"GROCERY"` | `5`    | `0.0`     | `{"KP"}`   | `{"GAMBLING"}` | `APPROVED` (scor `25` = `10+15`) |
+
+Pe TC6, fiecare regulă de scor se evaluează astfel:
+
+- D8 (`amount > 1000`): `2000 > 1000 = true` &rarr; `+10`;
+- D9 (`amount > 5000`): `2000 > 5000 = false`;
+- D10 (`hour < 6 || hour > 22`): `3 < 6 = true` (acoperă C6) &rarr; `+15`;
+- D11 (`newBen && amount > 3000`): `newBen = true` cu `2000 > 3000 = false` (acoperă C7) &rarr; nu adaugă;
+- D14 (`isHighRisk && amount > 3000`): `KP ∈ {KP}` &rarr; `isHighRisk = true` cu `2000 > 3000 = false` (acoperă C8)
+  &rarr; nu adaugă;
+- D15 (`tx24 > 10`): `5 > 10 = false`;
+- D16 (`avgPrev > 0 && ...`): `0 > 0 = false` (acoperă C9) &rarr; nu adaugă.
+
+Scorul final este `25 < 30`, deci decizia este `APPROVED`.
+
+#### Cardinalitatea setului minimal
+
+În total: 11 (TS1&ndash;TS11) + 6 (TC1&ndash;TC6) = 17 teste. Cele 5 teste TC1&ndash;TC5 sunt strict
+necesare pentru că fiecare excepție părăsește metoda imediat, iar cele 5 condiții lipsă sunt în decizii
+diferite. TC6 este singurul test suplimentar pe calea de scor, fiindcă cele 4 condiții lipsă (C6&ndash;C9)
+sunt independente și pot fi exersate simultan într-o singură execuție.
+
+Pentru metoda `evaluateTransaction`, criteriul acoperirea la nivel de condiție impune **6 teste suplimentare**
+față de acoperirea la nivel de condiție și respectiv, decizie, ridicând setul minimal la **17
+teste** și acoperirea pe *Branch %* din IntelliJ la **100% (56/56)**:
+
+![Rulare teste și acoperire la nivel de decizie](screenshots/coverage/coverage-decision.jpg)
 
 ## Bibliografie
 
