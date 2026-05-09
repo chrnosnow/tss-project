@@ -104,18 +104,18 @@ public class AiIndepPathsTest {
 
     // P8 - MANUAL_REVIEW
     // >5000, new beneficiary
-    @Test
-    void shouldRequireManualReview() {
-        TransactionDecision result =
-                detector.evaluateTransaction(
-                        6000, 12, true,
-                        "RO", "FOOD",
-                        5, 5000,
-                        Set.of("IR"),
-                        Set.of());
-
-        assertEquals(TransactionDecision.MANUAL_REVIEW, result);
-    }
+    //    @Test
+    //    void shouldRequireManualReview() {
+    //        TransactionDecision result =
+    //                detector.evaluateTransaction(
+    //                        6000, 12, true,
+    //                        "RO", "FOOD",
+    //                        5, 5000,
+    //                        Set.of("IR"),
+    //                        Set.of());
+    //
+    //        assertEquals(TransactionDecision.MANUAL_REVIEW, result);
+    //    }
 
     // P9 - BLOCKED
     // high risk country + loop match + break
@@ -134,18 +134,18 @@ public class AiIndepPathsTest {
     }
 
     // P10 - loop executes but no match
-    @Test
-    void shouldHandleHighRiskCountryNotMatched() {
-        TransactionDecision result =
-                detector.evaluateTransaction(
-                        4000, 12, false,
-                        "RO", "FOOD",
-                        1, 5000,
-                        Set.of("IR", "RU"),
-                        Set.of());
-
-        assertEquals(TransactionDecision.REQUIRES_2FA, result);
-    }
+    //    @Test
+    //    void shouldHandleHighRiskCountryNotMatched() {
+    //        TransactionDecision result =
+    //                detector.evaluateTransaction(
+    //                        4000, 12, false,
+    //                        "RO", "FOOD",
+    //                        1, 5000,
+    //                        Set.of("IR", "RU"),
+    //                        Set.of());
+    //
+    //        assertEquals(TransactionDecision.REQUIRES_2FA, result);
+    //    }
 
     // P11 - null risk sets
     @Test

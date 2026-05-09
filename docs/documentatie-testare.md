@@ -776,6 +776,100 @@ Toate cele `20` de drumuri din mulțimea de bază sunt exersate de TS1&ndash;TS1
 
 ![Rulare teste și acoperire circuite independente](screenshots/coverage/coverage-independent-cycles.jpg)
 
+## Testarea bazată pe mutanți
+
+Testarea bazată pe mutanți evaluează calitatea suitei de teste. Instrumentul generează variante minim modificate ale
+clasei sub test (mutanți), rulează suita pe fiecare mutant și verifică dacă măcar un test pică. Un mutant omorât
+înseamnă că suita a detectat schimbarea. Pe de altă parte, un mutant supraviețuitor semnalează o lacună &ndash; fie un
+test lipsă, fie o aserțiune prea slabă, fie un mutant echivalent (semantic identică cu originalul).
+
+### Configurația rulării inițiale
+
+- **Instrument**: [PIT](https://pitest.org/) (`pitest-maven`) versiunea **1.20.0**, cu
+  `pitest-junit5-plugin 1.2.3`.
+- **Țintă**: clasa `facultate.tss.TransactionFraudDetector` (43 de linii executabile).
+- **Suită de teste folosită**: reuniunea suitelor structurale și funcționale construite anterior
+  (`TransactionFraudDetectorEquivalenceTest`, `...BoundaryTest`, `...StatementCoverageTest`,
+  `...ConditionCoverageTest`, `...IndependentPathsTest`).
+- **Setul de mutatori activi**: setul implicit PIT (*default group*), care a generat **57 de mutanți**
+  distribuiți pe cinci categorii:
+
+| Mutator                       | Mutanți generați | Descriere succintă                                                             |
+|-------------------------------|------------------|--------------------------------------------------------------------------------|
+| `NegateConditionalsMutator`   | 27               | inversează operatorul unei comparații (`==` &harr; `!=`, `<` &harr; `>=`, ...) |
+| `ConditionalsBoundaryMutator` | 17               | mută frontiera relațională (`>` &rarr; `>=`, `<` &rarr; `<=`)                  |
+| `IncrementsMutator`           | 7                | inversează semnul unui increment (`+= 10` &rarr; `-= 10`)                      |
+| `NullReturnValsMutator`       | 5                | înlocuiește valoarea returnată cu `null`                                       |
+| `MathMutator`                 | 1                | înlocuiește o operație aritmetică (`*` &rarr; `/`, ș.a.m.d.)                   |
+
+### Rezultate inițiale
+
+![Sumar de pachet PIT &ndash; rulare inițială](screenshots/pit/pit-coverage-initial.jpg)
+
+| Metrică                        | Valoare          | Interpretare                                              |
+|--------------------------------|------------------|-----------------------------------------------------------|
+| Acoperire pe linii             | **100%** (43/43) | toate liniile metodei sunt executate de cel puțin un test |
+| Acoperire pe mutație           | **91%** (52/57)  | 52 mutanți omorâți, 5 supraviețuitori                     |
+| Tăria suitei (*test strength*) | **91%** (52/57)  | dintre mutanții acoperiți, 91% sunt omorâți               |
+
+Cei 5 mutanți rămași în viață apar exclusiv pe linii cu comparații relaționale și sunt produși toți
+de `ConditionalsBoundaryMutator` (12 din 17 omorâți, 5 supraviețuitori &rarr; 70.6% acoperire pe această
+categorie). Celelalte patru categorii sunt acoperite integral de suitele existente.
+
+![Mutanți pe linii &ndash; rulare inițială](screenshots/pit/mutations_initial.jpg)
+
+#### Mutanți supraviețuitori
+
+| #  | Linie | Cod original                              | Mutație aplicată            | Tip mutator                   |
+|----|-------|-------------------------------------------|-----------------------------|-------------------------------|
+| M1 | 48    | `if (amount > 1000)`                      | `amount >= 1000`            | `ConditionalsBoundaryMutator` |
+| M2 | 56    | `if (hourOfDay < 6 \|\| ...)`             | `hourOfDay <= 6`            | `ConditionalsBoundaryMutator` |
+| M3 | 56    | `if (... \|\| hourOfDay > 22)`            | `hourOfDay >= 22`           | `ConditionalsBoundaryMutator` |
+| M4 | 71    | `if (isHighRiskCountry && amount > 3000)` | `amount >= 3000`            | `ConditionalsBoundaryMutator` |
+| M5 | 75    | `if (transactionsLast24h > 10)`           | `transactionsLast24h >= 10` | `ConditionalsBoundaryMutator` |
+
+#### Diagnostic
+
+Mutațiile de tip frontieră devin distinctibile de cod doar atunci când datele de test ating valoarea
+**exact pe pragul comparației**. Suita BVA existentă (`TransactionFraudDetectorBoundaryTest`) testează
+fiecare prag cu valoarea `prag` și `prag ± ε`, ceea ce este **necesar dar nu suficient** pentru a omorî
+mutația: când valoarea cade pe prag, originalul (`>`) și mutantul (`>=`) produc același scor,
+deci aceeași decizie, deci aserția nu îi diferențiază.
+
+Pentru a omorî acești mutanți, este nevoie de teste construite astfel încât **diferența de risk score
+introdusă de mutație să traverseze un prag de decizie** (30, 60 sau 90), încât valoarea returnată
+(`TransactionDecision`) să difere între original și mutant. Acest set complementar de 5 teste este
+implementat în clasa dedicată `TransactionFraudDetectorMutationKillTest` (vezi fișierul
+[
+`src/test/java/facultate/tss/TransactionFraudDetectorMutationKillTest.java`](../src/test/java/facultate/tss/TransactionFraudDetectorMutationKillTest.java));
+fiecare caz fixează scorul *baseline* la `25` (sub pragul `30`) și folosește valoarea pe frontieră
+astfel încât mutantul să adauge `+10`, `+15`, `+20` sau `+30` puncte și să forțeze tranziția
+`APPROVED` &rarr; `REQUIRES_2FA`.
+
+Niciunul dintre cei 5 mutanți nu este echivalent: fiecare poate fi distins printr-o intrare validă din
+domeniul specificației, deci toți sunt mutanți neechivalenți care pot fi omorâți cu suita
+suplimentară descrisă mai sus.
+
+### Rezultate după adăugarea suitei de omorâre
+
+După adăugarea celor 5 teste din `TransactionFraudDetectorMutationKillTest` la suita rulată de PIT,
+toți mutanții supraviețuitori inițial sunt omorâți, iar metricele raportului ating valoarea maximă:
+
+![Sumar de pachet PIT &ndash; după omorâre](screenshots/pit/pit-coverage-after.jpg)
+
+Vizualizarea per linie confirmă faptul că nicio mutație nu mai supraviețuiește: toate cele 57 de mutații
+sunt marcate cu fundal verde (`KILLED`), inclusiv cele patru linii `48`, `56`, `71`, `75` care
+generaseră inițial mutanții supraviețuitori.
+
+![Mutanți pe linii &ndash; după omorâre](screenshots/pit/mutations_after.jpg)
+
+Atingerea acoperirii de 100% pe mutație arată că suita combinată (partiționarea în clase de echivalență, analiza
+valorilor de frontieră, structurale și mutanți neechivalenți omorâți) detectează fiecare dintre cele 57 de
+transformări sintactice generate de PIT asupra clasei `TransactionFraudDetector`. Spre deosebire de acoperirea pe
+linii sau pe ramuri, care confirmă doar că instrucțiunile au fost executate, criteriul mutației verifică și că
+fiecare modificare semnificativă a codului produce o aserțiune picată în cel puțin un test, oferind o garanție
+mai puternică privind sensibilitatea suitei la regresii.
+
 ## Bibliografie
 
 1. <a id="bibliografie"></a>**Financial Action Task Force (FATF)**, *High-Risk Jurisdictions subject to a Call for

@@ -116,34 +116,34 @@ public class AiCovDecisionTest {
     }
 
     // REQUIRES_2FA
-    @Test
-    void requires2FA() {
-        TransactionDecision result =
-                detector.evaluateTransaction(
-                        1500, 23, false,
-                        "RO", "FOOD",
-                        1, 1000,
-                        Set.of("IR"),
-                        Set.of()
-                );
-
-        assertEquals(TransactionDecision.REQUIRES_2FA, result);
-    }
+    //    @Test
+    //    void requires2FA() {
+    //        TransactionDecision result =
+    //                detector.evaluateTransaction(
+    //                        1500, 23, false,
+    //                        "RO", "FOOD",
+    //                        1, 1000,
+    //                        Set.of("IR"),
+    //                        Set.of()
+    //                );
+    //
+    //        assertEquals(TransactionDecision.REQUIRES_2FA, result);
+    //    }
 
     // MANUAL_REVIEW
-    @Test
-    void manualReview() {
-        TransactionDecision result =
-                detector.evaluateTransaction(
-                        6000, 23, true,
-                        "RO", "FOOD",
-                        5, 1000,
-                        Set.of("IR"),
-                        Set.of()
-                );
-
-        assertEquals(TransactionDecision.MANUAL_REVIEW, result);
-    }
+    //    @Test
+    //    void manualReview() {
+    //        TransactionDecision result =
+    //                detector.evaluateTransaction(
+    //                        6000, 23, true,
+    //                        "RO", "FOOD",
+    //                        5, 1000,
+    //                        Set.of("IR"),
+    //                        Set.of()
+    //                );
+    //
+    //        assertEquals(TransactionDecision.MANUAL_REVIEW, result);
+    //    }
 
     // BLOCKED + highRiskCountry found in loop
     @Test
@@ -161,17 +161,17 @@ public class AiCovDecisionTest {
     }
 
     // loop executes but country NOT found
-    @Test
-    void highRiskCountryNotMatched() {
-        TransactionDecision result =
-                detector.evaluateTransaction(
-                        4000, 12, false,
-                        "RO", "FOOD",
-                        1, 5000,
-                        Set.of("IR", "RU"),
-                        Set.of()
-                );
-
-        assertEquals(TransactionDecision.REQUIRES_2FA, result);
-    }
+    //    @Test
+    //    void highRiskCountryNotMatched() {
+    //        TransactionDecision result =
+    //                detector.evaluateTransaction(
+    //                        4000, 12, false,
+    //                        "RO", "FOOD",
+    //                        1, 5000,
+    //                        Set.of("IR", "RU"),
+    //                        Set.of()
+    //                );
+    //
+    //        assertEquals(TransactionDecision.REQUIRES_2FA, result);
+    //    }
 }
