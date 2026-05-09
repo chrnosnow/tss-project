@@ -407,6 +407,122 @@ Probleme specifice ale suitei AI pe acest criteriu:
    `D13` (`country.equals(countryCode)` &mdash; `true` cu `break` vs. `false` cu parcurgere completă), în
    timp ce TS9&ndash;TS11 le exersează doar implicit, prin `country = "RO"` într-un set unic `{"KP", "IR", "MM"}`.
 
+### Testare pe circuite independente
+
+#### Tool și prompt
+
+Aceeași sesiune ChatGPT din secțiunea precedentă, continuată cu două cereri succesive
+(arhiva completă a conversației, actualizată după acest schimb, este în același fișier
+[
+`screenshots/ai/struct-screencapture-chatgpt-c-69fa4210-9304-8325-a872-f1ea7e63f78b-2026-05-05-22_18_57.pdf`](screenshots/ai/struct-screencapture-chatgpt-c-69fa4210-9304-8325-a872-f1ea7e63f78b-2026-05-05-22_18_57.pdf)):
+
+> *Genereaza setul minim de teste unitare pentru circuite independente (complexitate
+> ciclomatica).*
+
+și ulterior:
+
+> *Genereaza si setul optimizat.*
+
+#### Răspuns la primul prompt (set neoptimizat)
+
+ChatGPT a calculat complexitatea ciclomatică folosind formula `V(G) = D + 1`, unde `D`
+este numărul de decizii din metodă. Modelul a identificat **19 decizii** (cele 6 blocuri
+de validare, scurtcircuitul prin blacklist, cele 7 reguli aditive de scor, bucla `for`
+și cele 4 ramuri finale de decizie pe scor) și a obținut `V(G) = 20`. Rezultatul
+coincide cu valoarea calculată în [`documentatie-testare.md`](documentatie-testare.md)
+prin formula clasică pe graful complet conectat (`V(G) = E − N + P`) &mdash; dovadă
+suplimentară a echivalenței celor două formulări pe programe structurate.
+
+Pentru acoperirea celor `20` de drumuri liniar independente, modelul a propus inițial
+20 de teste &mdash; câte unul per drum din mulțimea de bază &mdash; argumentând că
+*"fiecare test trebuie să introducă cel puțin o muchie nouă în graful de control"*. În
+finalul răspunsului, modelul a precizat de la sine că suita poate fi redusă dacă un
+singur test combină mai multe muchii noi, oferind să redea și această variantă la
+cerere &ndash; comportament corect din punct de vedere metodologic, în acord cu
+definiția lui McCabe a mulțimii de bază [[7]](#bibliografie).
+
+#### Răspuns la al doilea prompt (set optimizat)
+
+ChatGPT a livrat **11 metode de test** (transcrise în
+[`src/test/java/ai/AiIndepPathsTest.java`](../src/test/java/ai/AiIndepPathsTest.java)),
+denumite `P1`&ndash;`P11` în comentariile testelor, cu următoarea distribuție:
+
+- 4 teste pentru blocurile de validare (`P1`&ndash;`P4`): `amount`, `hour`, `country`,
+  istoric (`tx24 < 0`);
+- 1 test pentru validarea seturilor `null` (`P11`);
+- 1 test pentru scurtcircuitul prin blacklist (`P5`);
+- 5 teste pentru deciziile finale + ramurile buclei `for` (`P6`&ndash;`P10`).
+
+La rulare, **9 din 11 teste trec**, iar `shouldRequireManualReview` și
+`shouldHandleHighRiskCountryNotMatched` pică:
+
+![Rulare teste AI circuite independente &mdash; 9 trec, 2 pică](screenshots/ai/ai-indep-paths-tests.jpg)
+
+```
+Expected :MANUAL_REVIEW         Expected :REQUIRES_2FA
+Actual   :REQUIRES_2FA          Actual   :APPROVED
+at AiIndepPathsTest.shouldRequireManualReview(:117)
+at AiIndepPathsTest.shouldHandleHighRiskCountryNotMatched(:147)
+```
+
+Ambele eșecuri sunt cauzate de aceeași limitare aritmetică observată recurent în
+suitele AI anterioare:
+
+- `shouldRequireManualReview` (`amount = 6000`, `newBen = true`, `country = "RO"`,
+  `highRisk = {"IR"}`, `avg = 5000`): modelul a estimat un scor `≥ 60`, dar `RO ∉ {"IR"}`
+  (regula `+30` nu se activează), iar `6000 > 3 · 5000 = 15000` este `false` (regula
+  `+25` a multiplului nu se activează); scorul real este `10 + 20 + 25 = 55` &rarr;
+  `REQUIRES_2FA`.
+- `shouldHandleHighRiskCountryNotMatched` (`amount = 4000`, `newBen = false`,
+  `country = "RO"`, `highRisk = {"IR", "RU"}`, `avg = 5000`): modelul a estimat un scor
+  `≥ 30`, presupunând că pragul `> 5000` se activează, dar `4000 < 5000`; cu
+  `newBen = false` și `RO ∉ {"IR", "RU"}`, doar `+10` se aplică, scor `10` &rarr;
+  `APPROVED`.
+
+#### Comparație cu suita proprie
+
+Suita proprie (`TransactionFraudDetectorIndependentPathsTest`, 11 teste) acoperă
+toate cele `20` de drumuri din mulțimea de bază. Suita AI optimizată (11 teste, 2 picate)
+are aceeași cardinalitate, dar acoperă mai puține drumuri cu execuții corecte:
+
+| Drum (mulțimea de bază)                                  | Suită proprie | Suită AI (teste care trec)                                                                                                                  |
+|----------------------------------------------------------|---------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| P2 (`D1 = true`, `amount ≤ 0`)                           | TS1           | `shouldThrowForInvalidAmount`                                                                                                               |
+| P3 (`D2 = true`, `hour ∉ [0, 23]`)                       | TS2           | `shouldThrowForInvalidHour`                                                                                                                 |
+| P4 (`D3 = true`, `country ∈ {null, blank}`)              | TS3           | `shouldThrowForInvalidCountry`                                                                                                              |
+| P5 (`D4 = true`, `merchant ∈ {null, blank}`)             | TS4           | **lipsă**                                                                                                                                   |
+| P6 (`D5 = true`, `tx24 < 0` sau `avg < 0`)               | TS5           | `shouldThrowForInvalidHistory` (doar `tx24 < 0`)                                                                                            |
+| P7 (`D6 = true`, seturi `null`)                          | TS6           | `shouldThrowForNullRiskSet` (doar `highRisk = null`)                                                                                        |
+| P8 (`D7 = true`, blacklist)                              | TS7           | `shouldBlockBlacklistedMerchant`                                                                                                            |
+| P1 (drum de bază, `APPROVED` scor `0`)                   | TS9           | `shouldApproveSafeTransaction`                                                                                                              |
+| P13 (`D12 = false`, iterator epuizat)                    | TS9           | `shouldApproveSafeTransaction` (`country = "RO" ∉ {"IR"}`); `shouldHandleHighRiskCountryNotMatched` &mdash; **picat** (`RO ∉ {"IR", "RU"}`) |
+| P14 (`D13 = true`, potrivire + `break`)                  | TS8           | `shouldBlockVeryHighRiskTransaction` (`country = "IR"`)                                                                                     |
+| P9, P16, P20 (`REQUIRES_2FA` prin `D8`, `D15`, `D19`)    | TS10          | `shouldRequire2FA`                                                                                                                          |
+| P10&ndash;P12, P19 (`MANUAL_REVIEW` prin reguli compuse) | TS11          | `shouldRequireManualReview` &mdash; **picat**                                                                                               |
+| P15, P17, P18 (`BLOCKED` prin scor `≥ 90`)               | TS8           | `shouldBlockVeryHighRiskTransaction`                                                                                                        |
+| Teste care trec                                          | 11 / 11       | 9 / 11                                                                                                                                      |
+| Drumuri acoperite din mulțimea de bază                   | 20 / 20       | 16 / 20 (≈ 80%)                                                                                                                             |
+
+Probleme specifice ale suitei AI pe acest criteriu:
+
+1. Subacoperire pe blocurile `throw`: suita AI a colapsat din nou validările
+   `merchantCategory == null` / `blank` într-o singură categorie ignorată, iar testul
+   pentru istoric exersează doar `tx24 < 0` (`avg < 0` rămâne neacoperit). Comportamentul
+   este consistent cu cel observat în suita pentru acoperirea la nivel de instrucțiune
+   (4/6 blocuri `throw` față de 6/6 în suita proprie).
+2. Limitare aritmetică recurentă: pe cele două teste cu `amount` și `avg` mari, modelul
+   a presupus din nou activarea regulii multiplului mediei sau a pragului `> 5000`
+   fără a verifica precondițiile, omițând că pragurile se evaluează strict (`>`, nu
+   `>=`). Drumurile pentru `MANUAL_REVIEW` (`P10`&ndash;`P12`, `P19`) și pentru ramura
+   `D19 = true` cu set `highRisk` nepotrivit rămân neacoperite în execuția cu succes.
+3. Beneficiu metodologic: suita AI separă explicit cele două ramuri ale buclei `for`
+   (`shouldBlockVeryHighRiskTransaction` cu match și `shouldHandleHighRiskCountryNotMatched`
+   fără match), o distincție care apare în suita proprie doar implicit prin
+   `country = "RO"` peste setul `{"KP", "IR", "MM"}`. Această clarificare a fost
+   transferată ulterior în propriul tabel de trasabilitate `P13` &harr; `TS9` din
+   [`documentatie-testare.md`](documentatie-testare.md), unde am formulat explicit
+   echivalența între *"iterator epuizat"* și *"set gol"* la nivelul grafului fluxului de control.
+
 ## Bibliografie
 
 1. <a id="bibliografie"></a>**OpenAI**, *How ChatGPT and our foundation models are developed*. Disponibil online
@@ -431,6 +547,8 @@ Probleme specifice ale suitei AI pe acest criteriu:
 6. M. L. Siddiq, J. C. Da Silva Santos, R. H. Tanvir, N. Ulfat, F. Al Rifat, V. C. Lopes (2024). *Using Large Language
    Models to Generate JUnit Tests: An Empirical Study*. EASE '24: Proceedings of the 28th International Conference on
    Evaluation and Assessment in Software Engineering. p. 313-211.
-   DOI: [10.1145/3661167.3661216](https://doi.org/10.1145/3661167.3661216). 
+   DOI: [10.1145/3661167.3661216](https://doi.org/10.1145/3661167.3661216).
+7. **T. J. McCabe**, *A Complexity Measure*, IEEE Transactions on Software Engineering, vol. SE-2, nr. 4, pp.
+   308&ndash;320, decembrie 1976. DOI: <https://doi.org/10.1109/TSE.1976.233837>.
 
 

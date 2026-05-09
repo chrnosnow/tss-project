@@ -639,9 +639,155 @@ teste** și acoperirea pe *Branch %* din IntelliJ la **100% (56/56)**:
 
 ![Rulare teste și acoperire la nivel de decizie](screenshots/coverage/coverage-decision.jpg)
 
+### Setul minimal de teste pentru testarea pe circuite independente
+
+Testarea pe circuite liniar independente, introdusă de T. J. McCabe (1976) [[2]](#ref-mccabe), folosește
+complexitatea ciclomatică `V(G)` a grafului fluxului de control pentru a determina numărul minim de
+drumuri ce trebuie exersate astfel încât oricare alt drum executabil prin program să poată fi exprimat
+ca o combinație liniară a lor.
+
+#### Calculul complexității ciclomatice
+
+Pentru calculul complexității ciclomatice `V(G)` folosim formularea bazată pe graful fluxului de control,
+prezentată în [[3]](#ref-cc). Articolul de referință propune două formule echivalente, exprimate în
+funcție de numărul de muchii `E`, numărul de noduri `N` și numărul de componente conexe `P`:
+
+- formula generală `V(G) = E − N + 2·P`, aplicată pe CFG-ul standard al programului;
+- formularea alternativă `V(G) = E − N + P`, aplicată pe **graful augmentat** în care fiecare punct de
+  ieșire este conectat înapoi la nodul de intrare; graful astfel obținut este complet conectat, iar
+  `V(G)` devine egal cu numărul ciclomatic al grafului (primul număr Betti) [[3]](#ref-cc).
+
+Reprezentarea explicită a grafului complet conectat al metodei `evaluateTransaction` se găsește în
+[`graf-complet-conectat.pdf`](screenshots/graf-flux-control/graf-complet-conectat.pdf), construit pornind
+de la CFG-ul original ([`code2flow_8JTB2i.pdf`](screenshots/graf-flux-control/code2flow_8JTB2i.pdf)).
+Numerotarea începe de la nodul `0` (intrarea în metodă), iar nodul `1` corespunde primei decizii. Graful
+augmentat conține:
+
+- `N = 42` noduri;
+- `E = 61` muchii &mdash; cele 61 includ și arcele virtuale de închidere de la fiecare punct terminal
+  către nodul `0` (cele 6 ieșiri prin `throw`, scurtcircuitul `return BLOCKED` și cele 4 `return`-uri
+  finale), care fac graful complet conectat (`P = 1`);
+- `P = 1` componentă (conexă, respectiv complet conexă, după augmentare).
+
+Aplicând formularea alternativă pe graful complet conectat:
+
+```
+V(G) = E − N + P = 61 − 42 + 1 = 20
+```
+
+Mulțimea de bază conține deci **20 de drumuri liniar independente**. Rezultatul coincide cu valoarea
+obținută din numărul de predicate de control: considerând fiecare expresie booleană din inventarul
+`D1`&ndash;`D19` ca pe o singură decizie, `V(G) = π + 1 = 19 + 1 = 20` &mdash; egalitate demonstrată de
+McCabe pentru programe structurate, conform [[3]](#ref-cc).
+
+#### Clasificarea complexității și acțiuni de reducere
+
+Articolul Wikipedia [[3]](#ref-cc) reia clasificarea propusă de T. J. McCabe (preluată ulterior și în
+recomandările NIST &mdash; *NIST Special Publication 500-235, Structured Testing* [[4]](#ref-nist)), în
+care valorile complexității ciclomatice se interpretează astfel:
+
+| Interval `V(G)` | Interpretare                          |
+|-----------------|---------------------------------------|
+| `1`&ndash;`10`  | procedură simplă, risc redus          |
+| `11`&ndash;`20` | mai complexă, risc moderat            |
+| `21`&ndash;`50` | complexă, risc ridicat                |
+| `> 50`          | practic netestabilă, risc foarte mare |
+
+Cu `V(G) = 20`, metoda `evaluateTransaction` se află la limita superioară a intervalului de risc
+moderat. Pentru a micșora complexitatea, se pot aplica următoarele refactorizări:
+
+- extragerea blocurilor de validare într-o metodă privată dedicată (`validate(...)`) &ndash; elimină
+  simultan din corpul principal deciziile `D1`&ndash;`D6`.
+- înlocuirea buclei `for` + flag-ului `isHighRiskCountry` cu un apel direct
+  `highRiskCountries.contains(countryCode)` &ndash; elimină deciziile `D12` și `D13`.
+- tabelarea regulilor aditive de scor sub forma unei liste de tuple `(predicat, puncte)` parcursă cu
+  un `stream` &ndash; mută deciziile `D8`&ndash;`D11`, `D14`&ndash;`D16` într-o structură de date, lăsând în
+  corpul metodei o singură agregare.
+- înlocuirea lanțului final `D17`&ndash;`D19` cu o căutare pe un `NavigableMap<Integer,
+  TransactionDecision>` &ndash; cele trei comparații succesive se reduc la o singură operație.
+
+#### Construcția mulțimii de bază
+
+Mulțimea de bază se obține pornind de la cel mai simplu drum din program, care nu
+execută nicio excepție și niciun scurtcircuit și generând câte un drum suplimentar pentru fiecare
+decizie prin comutarea acelei decizii, păstrând restul cât mai apropiat de linia de bază.
+
+**Drumul P1** (de bază): toate validările trec, `merchant` nu este în lista neagră, scorul rămâne `0` și
+metoda returnează `APPROVED`.
+
+| Drum  | Decizie comutată față de baseline                          | Test asociat (TS1&ndash;TS11)                     |
+|-------|------------------------------------------------------------|---------------------------------------------------|
+| `P1`  | &mdash; (drumul de bază)                                   | TS9 (`APPROVED`, scor `0`)                        |
+| `P2`  | `D1 = true` (`amount ≤ 0`)                                 | TS1                                               |
+| `P3`  | `D2 = true` (`hour ∉ [0, 23]`)                             | TS2                                               |
+| `P4`  | `D3 = true` (`country ∈ {null, blank}`)                    | TS3                                               |
+| `P5`  | `D4 = true` (`merchant ∈ {null, blank}`)                   | TS4                                               |
+| `P6`  | `D5 = true` (`tx24 < 0` sau `avg < 0`)                     | TS5                                               |
+| `P7`  | `D6 = true` (`highRisk = null` sau `blacklist = null`)     | TS6                                               |
+| `P8`  | `D7 = true` (`merchant` blacklistat)                       | TS7                                               |
+| `P9`  | `D8 = true` (`amount > 1000`)                              | TS10 (`amount = 2500`)                            |
+| `P10` | `D9 = true` (`amount > 5000`)                              | TS8 (`amount = 10000`), TS11 (`amount = 5500`)    |
+| `P11` | `D10 = true` (`hour < 6` sau `hour > 22`)                  | TS8, TS11 (`hour = 23`)                           |
+| `P12` | `D11 = true` (`newBen && amount > 3000`)                   | TS8, TS11 (`newBen = true`, `amount > 3000`)      |
+| `P13` | `D12 = false` (`hasNext()` returnează `false`, `for` iese) | TS9 (iterator epuizat după 3 iterații fără match) |
+| `P14` | `D13 = true` (potrivire în `for` &rarr; `break`)           | TS8 (`country = "KP" ∈ highRisk`)                 |
+| `P15` | `D14 = true` (`isHighRisk && amount > 3000`)               | TS8 (`KP` și `amount = 10000`)                    |
+| `P16` | `D15 = true` (`tx24 > 10`)                                 | TS8, TS10 (`tx24 = 15`)                           |
+| `P17` | `D16 = true` (`avg > 0 && amount > 3·avg`)                 | TS8 (`avg = 100`, `amount = 10000`)               |
+| `P18` | `D17 = true` (`scor ≥ 90`)                                 | TS8 (scor `145`)                                  |
+| `P19` | `D18 = true` (`60 ≤ scor < 90`)                            | TS11 (scor `70`)                                  |
+| `P20` | `D19 = true` (`30 ≤ scor < 60`)                            | TS10 (scor `30`)                                  |
+
+**Notă pe `P13`** (`D12 = false`). În desugaring-ul standard al `for-each`, decizia `D12` corespunde
+apelului `iterator.hasNext()`, care se evaluează la fiecare iterație. `D12 = false` este exersat în două
+scenarii echivalente la nivelul CFG: (1) set gol &rarr; `hasNext()` returnează `false` la primul apel, sau
+(2) set parcurs complet fără `break` &rarr; `hasNext()` returnează `false` după ultima iterație.
+Testele TS9, TS10 și TS11 (cu `country = "RO" ∉ highRiskCountries`) cad în scenariul al doilea: bucla
+iterează prin toate cele 3 elemente fără potrivire, iar `hasNext()` returnează `false` la a 4-a evaluare.
+Singurul test care **nu** acoperă `D12 = false` natural este TS8, care iese prin `break` (`D13 = true`).
+
+#### Cardinalitatea setului minimal
+
+Cele `20` de drumuri liniar independente sunt acoperite de **11 teste** (TS1&ndash;TS11), fără teste
+suplimentare. Suita este minimală în sens funcțional: testele TS8, TS10 și TS11 comută simultan câte
+3&ndash;5 decizii față de drumul de bază, combinând mai multe drumuri cu comutare într-o singură execuție.
+În particular, TS9 (drumul de bază `P1`) acoperă simultan și drumul `P13`, prin epuizarea iteratorului
+după cele 3 elemente din `highRiskCountries`.
+
+#### Trasabilitate test &harr; drumuri acoperite
+
+Tabelul următor evidențiază ce drumuri din mulțimea de bază sunt exersate de fiecare test TS1&ndash;TS11:
+
+| Test | Drumuri acoperite                                      | Comentariu                                                                              |
+|------|--------------------------------------------------------|-----------------------------------------------------------------------------------------|
+| TS1  | `P2`                                                   | comutare pe `D1`                                                                        |
+| TS2  | `P3`                                                   | comutare pe `D2`                                                                        |
+| TS3  | `P4`                                                   | comutare pe `D3`                                                                        |
+| TS4  | `P5`                                                   | comutare pe `D4`                                                                        |
+| TS5  | `P6`                                                   | comutare pe `D5`                                                                        |
+| TS6  | `P7`                                                   | comutare pe `D6`                                                                        |
+| TS7  | `P8`                                                   | comutare pe `D7`                                                                        |
+| TS8  | `P10`, `P11`, `P12`, `P14`, `P15`, `P16`, `P17`, `P18` | drum cu 8 comutări simultane (toate cele 7 reguli de scor active + match în `for`)      |
+| TS9  | `P1`, `P13`                                            | drum de bază + `D12 = false` la epuizarea iteratorului                                  |
+| TS10 | `P9`, `P13`, `P16`, `P20`                              | comutări combinate pe `D8`, `D15`, `D19` + `D12 = false` la epuizarea iteratorului      |
+| TS11 | `P10`, `P11`, `P12`, `P13`, `P19`                      | comutări combinate pe `D9`&ndash;`D11`, `D18` + `D12 = false` la epuizarea iteratorului |
+
+Toate cele `20` de drumuri din mulțimea de bază sunt exersate de TS1&ndash;TS11, fără teste suplimentare:
+
+![Rulare teste și acoperire circuite independente](screenshots/coverage/coverage-independent-cycles.jpg)
+
 ## Bibliografie
 
 1. <a id="bibliografie"></a>**Financial Action Task Force (FATF)**, *High-Risk Jurisdictions subject to a Call for
    Action* ("black list"). Disponibil online la: <https://www.fatf-gafi.org/en/countries/black-and-grey-lists.html> (
    accesat la 01.05.2026).
+2. <a id="ref-mccabe"></a>**T. J. McCabe**, *A Complexity Measure*, IEEE Transactions on Software
+   Engineering, vol. SE-2, nr. 4, pp. 308&ndash;320, decembrie 1976.
+   DOI: <https://doi.org/10.1109/TSE.1976.233837>.
+3. <a id="ref-cc"></a>***Cyclomatic complexity***, articol Wikipedia. Disponibil online la:
+   <https://en.wikipedia.org/wiki/Cyclomatic_complexity> (accesat la 09.05.2026).
+4. <a id="ref-nist"></a>**A. H. Watson, T. J. McCabe**, *Structured Testing: A Testing Methodology Using the
+   Cyclomatic Complexity Metric*, NIST Special Publication 500-235, National Institute of Standards and
+   Technology, septembrie 1996. Disponibil online la:
+   <https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication500-235.pdf> (accesat la 09.05.2026).
 
