@@ -209,9 +209,9 @@ ChatGPT a livrat **16 metode de test** (transcrise în
 [`src/test/java/ai/AiBvaTest.java`](../src/test/java/ai/AiBvaTest.java)): 11 teste de
 validare la frontieră (`amount`, `hour`, `tx`, `avg`), 4 teste de prag pe `amount`
 (`1000`, `1000.01`, `5000`, `5000.01`) și 1 test pe frontiera nocturnă `hour = 5/6`
-&mdash; **acesta a picat**:
+&ndash; **acesta a picat**:
 
-![Rulare teste AI BVA &mdash; 15 trec, 1 pică](screenshots/ai/ai-bva-tests.jpg)
+![Rulare teste AI BVA &ndash; 15 trec, 1 pică](screenshots/ai/ai-bva-tests.jpg)
 
 ```
 org.opentest4j.AssertionFailedError: expected: not equal but was: <APPROVED>
@@ -277,7 +277,7 @@ ChatGPT a generat **8 metode de test** (transcrise în
 `MANUAL_REVIEW`, `BLOCKED` prin scor). La rulare, 7 din 8 teste trec, iar
 `shouldRequireManualReview` pică:
 
-![Rulare teste AI statement coverage &mdash; 7 trec, 1 pică](screenshots/ai/ai-cov-statem-tests.jpg)
+![Rulare teste AI statement coverage &ndash; 7 trec, 1 pică](screenshots/ai/ai-cov-statem-tests.jpg)
 
 ```
 org.opentest4j.AssertionFailedError:
@@ -347,7 +347,7 @@ ChatGPT a generat **12 metode de test** (transcrise în
 încheie fără potrivire (cu set ne-vid). La rulare, **9 din 12 teste trec**, iar `manualReview`,
 `requires2FA` și `highRiskCountryNotMatched` pică:
 
-![Rulare teste AI decision coverage &mdash; 9 trec, 3 pică](screenshots/ai/ai-cov-decision-tests.jpg)
+![Rulare teste AI decision coverage &ndash; 9 trec, 3 pică](screenshots/ai/ai-cov-decision-tests.jpg)
 
 ```
 Expected :MANUAL_REVIEW       Expected :REQUIRES_2FA       Expected :REQUIRES_2FA
@@ -386,8 +386,8 @@ neacoperite ramurile `true` ale deciziilor finale `D18` (`riskScore >= 60` &rarr
 | D12 (intrare în `for`) + D13 (potrivire + `break`) | TS8            | `blockedHighRiskTransaction` (`country = "IR"`, match)                                                       |
 | D12 (parcurgere completă, fără `break`)            | TS9&ndash;TS11 | `approvedTransaction` (`country = "RO"`, fără potrivire)                                                     |
 | D17 ramura `true` (`BLOCKED` prin scor)            | TS8            | `blockedHighRiskTransaction` (scor `145`)                                                                    |
-| D18 ramura `true` (`MANUAL_REVIEW`)                | TS11           | `manualReview` &mdash; **picat**, ramură neacoperită                                                         |
-| D19 ramura `true` (`REQUIRES_2FA`)                 | TS10           | `requires2FA` &mdash; **picat**; `highRiskCountryNotMatched` &mdash; **picat**, ramură neacoperită           |
+| D18 ramura `true` (`MANUAL_REVIEW`)                | TS11           | `manualReview` &ndash; **picat**, ramură neacoperită                                                         |
+| D19 ramura `true` (`REQUIRES_2FA`)                 | TS10           | `requires2FA` &ndash; **picat**; `highRiskCountryNotMatched` &ndash; **picat**, ramură neacoperită           |
 | D19 ramura `false` (`APPROVED`)                    | TS9            | `approvedTransaction`                                                                                        |
 | Teste care trec                                    | 11 / 11        | 9 / 12                                                                                                       |
 | Acoperire la nivel de decizie                      | 38 / 38        | 36 / 38 (≈ 94.7%)                                                                                            |
@@ -404,14 +404,14 @@ Probleme specifice ale suitei AI pe acest criteriu:
 3. Suita AI îmbunătățește marginal trasabilitatea pe bucla `for` față de suita
    proprie. `blockedHighRiskTransaction` (`country = "IR"`) și `highRiskCountryNotMatched`
    (`highRiskCountries = {"IR", "RU"}`, `country = "RO"`) separă explicit cele două ramuri ale deciziei
-   `D13` (`country.equals(countryCode)` &mdash; `true` cu `break` vs. `false` cu parcurgere completă), în
+   `D13` (`country.equals(countryCode)` &ndash; `true` cu `break` vs. `false` cu parcurgere completă), în
    timp ce TS9&ndash;TS11 le exersează doar implicit, prin `country = "RO"` într-un set unic `{"KP", "IR", "MM"}`.
 
 ### Testare pe circuite independente
 
 #### Tool și prompt
 
-Aceeași sesiune ChatGPT din secțiunea precedentă, continuată cu două cereri succesive
+Aceeași sesiune ChatGPT din secțiunea precedentă, continuată cu cererea de mai jos
 (arhiva completă a conversației, actualizată după acest schimb, este în același fișier
 [
 `screenshots/ai/struct-screencapture-chatgpt-c-69fa4210-9304-8325-a872-f1ea7e63f78b-2026-05-05-22_18_57.pdf`](screenshots/ai/struct-screencapture-chatgpt-c-69fa4210-9304-8325-a872-f1ea7e63f78b-2026-05-05-22_18_57.pdf)):
@@ -419,109 +419,120 @@ Aceeași sesiune ChatGPT din secțiunea precedentă, continuată cu două cereri
 > *Genereaza setul minim de teste unitare pentru circuite independente (complexitate
 > ciclomatica).*
 
-și ulterior:
-
-> *Genereaza si setul optimizat.*
-
-#### Răspuns la primul prompt (set neoptimizat)
+#### Răspuns și rulare
 
 ChatGPT a calculat complexitatea ciclomatică folosind formula `V(G) = D + 1`, unde `D`
 este numărul de decizii din metodă. Modelul a identificat **19 decizii** (cele 6 blocuri
 de validare, scurtcircuitul prin blacklist, cele 7 reguli aditive de scor, bucla `for`
 și cele 4 ramuri finale de decizie pe scor) și a obținut `V(G) = 20`. Rezultatul
 coincide cu valoarea calculată în [`documentatie-testare.md`](documentatie-testare.md)
-prin formula clasică pe graful complet conectat (`V(G) = E − N + P`) &mdash; dovadă
+prin formula clasică pe graful complet conectat (`V(G) = E − N + P`) &ndash; dovadă
 suplimentară a echivalenței celor două formulări pe programe structurate.
 
-Pentru acoperirea celor `20` de drumuri liniar independente, modelul a propus inițial
-20 de teste &mdash; câte unul per drum din mulțimea de bază &mdash; argumentând că
-*"fiecare test trebuie să introducă cel puțin o muchie nouă în graful de control"*. În
-finalul răspunsului, modelul a precizat de la sine că suita poate fi redusă dacă un
-singur test combină mai multe muchii noi, oferind să redea și această variantă la
-cerere &ndash; comportament corect din punct de vedere metodologic, în acord cu
-definiția lui McCabe a mulțimii de bază [[7]](#bibliografie).
-
-#### Răspuns la al doilea prompt (set optimizat)
-
-ChatGPT a livrat **11 metode de test** (transcrise în
+Pentru acoperirea celor `20` de drumuri liniar independente, modelul a livrat **20 de metode
+de test** (transcrise în
 [`src/test/java/ai/AiIndepPathsTest.java`](../src/test/java/ai/AiIndepPathsTest.java)),
-denumite `P1`&ndash;`P11` în comentariile testelor, cu următoarea distribuție:
+câte una per drum din mulțimea de bază, argumentând că *"fiecare test trebuie să introducă
+cel puțin o muchie nouă în graful de control"* &ndash; comportament corect din punct de
+vedere metodologic, în acord cu definiția lui McCabe a mulțimii de bază
+[[7]](#bibliografie).
 
-- 4 teste pentru blocurile de validare (`P1`&ndash;`P4`): `amount`, `hour`, `country`,
-  istoric (`tx24 < 0`);
-- 1 test pentru validarea seturilor `null` (`P11`);
-- 1 test pentru scurtcircuitul prin blacklist (`P5`);
-- 5 teste pentru deciziile finale + ramurile buclei `for` (`P6`&ndash;`P10`).
+La rulare, **14 din 20 de teste trec**, iar 6 pică:
 
-La rulare, **9 din 11 teste trec**, iar `shouldRequireManualReview` și
-`shouldHandleHighRiskCountryNotMatched` pică:
-
-![Rulare teste AI circuite independente &mdash; 9 trec, 2 pică](screenshots/ai/ai-indep-paths-tests.jpg)
+![Rulare teste AI circuite independente &ndash; 14 trec, 6 pică](screenshots/ai/ai-indep-paths-tests.jpg)
 
 ```
-Expected :MANUAL_REVIEW         Expected :REQUIRES_2FA
-Actual   :REQUIRES_2FA          Actual   :APPROVED
-at AiIndepPathsTest.shouldRequireManualReview(:117)
-at AiIndepPathsTest.shouldHandleHighRiskCountryNotMatched(:147)
+Expected :REQUIRES_2FA   Actual :APPROVED       at AiIndepPathsTest.requires2FADecision(:217)
+Expected :REQUIRES_2FA   Actual :APPROVED       at AiIndepPathsTest.tooManyTransactions(:181)
+Expected :MANUAL_REVIEW  Actual :BLOCKED        at AiIndepPathsTest.manualReviewDecision(:229)
+Expected :REQUIRES_2FA   Actual :APPROVED       at AiIndepPathsTest.highRiskLoopNoMatch(:157)
+Expected :MANUAL_REVIEW  Actual :REQUIRES_2FA   at AiIndepPathsTest.highRiskCountryMatched(:169)
+Expected :REQUIRES_2FA   Actual :APPROVED       at AiIndepPathsTest.anomalousAmount(:193)
 ```
 
-Ambele eșecuri sunt cauzate de aceeași limitare aritmetică observată recurent în
-suitele AI anterioare:
+Toate cele 6 eșecuri sunt cauzate de aceeași clasă de greșeli observată recurent în
+suitele AI anterioare &ndash; estimarea grosieră a scorului fără a verifica strict
+precondițiile fiecărei reguli aditive:
 
-- `shouldRequireManualReview` (`amount = 6000`, `newBen = true`, `country = "RO"`,
-  `highRisk = {"IR"}`, `avg = 5000`): modelul a estimat un scor `≥ 60`, dar `RO ∉ {"IR"}`
-  (regula `+30` nu se activează), iar `6000 > 3 · 5000 = 15000` este `false` (regula
-  `+25` a multiplului nu se activează); scorul real este `10 + 20 + 25 = 55` &rarr;
-  `REQUIRES_2FA`.
-- `shouldHandleHighRiskCountryNotMatched` (`amount = 4000`, `newBen = false`,
-  `country = "RO"`, `highRisk = {"IR", "RU"}`, `avg = 5000`): modelul a estimat un scor
-  `≥ 30`, presupunând că pragul `> 5000` se activează, dar `4000 < 5000`; cu
-  `newBen = false` și `RO ∉ {"IR", "RU"}`, doar `+10` se aplică, scor `10` &rarr;
-  `APPROVED`.
+- `requires2FADecision` (`amount = 1500`, `hour = 23`, `avg = 1000`): modelul a
+  presupus că `D8` (`+10`) și `D10` (`+15`) generează un scor care depășește pragul
+  `30`, dar suma reală este `25` &rarr; `APPROVED`.
+- `tooManyTransactions` (`tx24 = 11`, restul baseline): doar regula `D15` se
+  activează (`+20`), deci scorul `20 < 30` &rarr; `APPROVED`.
+- `anomalousAmount` (`amount = 1000`, `avg = 200`): modelul nu a observat că
+  pragul `D8` este strict (`amount > 1000`, nu `≥`), deci cu `amount = 1000` regula
+  `+10` nu se activează; doar `D16` aduce `+25`, scor `25` &rarr; `APPROVED`.
+- `highRiskLoopNoMatch` (`amount = 4000`, `country = "RO"`, `highRisk = {"IR", "RU"}`,
+  `avg = 4000`, `newBen = false`): modelul a presupus activarea regulii multiplului
+  mediei, dar `4000 > 3·4000 = 12000` este `false`; cu `newBen = false` și `RO ∉
+  {"IR", "RU"}`, doar `D8` aduce `+10`, scor `10` &rarr; `APPROVED`.
+- `highRiskCountryMatched` (`amount = 4000`, `country = "IR"`, `highRisk = {"IR"}`,
+  `avg = 4000`): scor real `D8 + D14 = 10 + 30 = 40` &rarr; `REQUIRES_2FA` (nu
+  `MANUAL_REVIEW`, care ar cere `≥ 60`).
+- `manualReviewDecision` (`amount = 6000`, `hour = 23`, `newBen = true`, `tx24 = 5`,
+  `avg = 1000`): modelul a vizat ramura `MANUAL_REVIEW` (`60 ≤ scor < 90`), dar
+  `D8 + D9 + D10 + D11 + D16 = 10 + 20 + 15 + 25 + 25 = 95 ≥ 90` &rarr; `BLOCKED`.
 
 #### Comparație cu suita proprie
 
-Suita proprie (`TransactionFraudDetectorIndependentPathsTest`, 11 teste) acoperă
-toate cele `20` de drumuri din mulțimea de bază. Suita AI optimizată (11 teste, 2 picate)
-are aceeași cardinalitate, dar acoperă mai puține drumuri cu execuții corecte:
+Suita proprie (`TransactionFraudDetectorIndependentPathsTest`, 20 de teste) asociază
+fiecărui drum un test dedicat (`P1_*`&ndash;`P20_*`) și acoperă toate cele `20` de
+drumuri cu `20 / 20` execuții corecte. Suita AI are aceeași cardinalitate (`20` teste,
+câte unul per drum), dar pică pe `6` din ele:
 
-| Drum (mulțimea de bază)                                  | Suită proprie | Suită AI (teste care trec)                                                                                                                  |
-|----------------------------------------------------------|---------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| P2 (`D1 = true`, `amount ≤ 0`)                           | TS1           | `shouldThrowForInvalidAmount`                                                                                                               |
-| P3 (`D2 = true`, `hour ∉ [0, 23]`)                       | TS2           | `shouldThrowForInvalidHour`                                                                                                                 |
-| P4 (`D3 = true`, `country ∈ {null, blank}`)              | TS3           | `shouldThrowForInvalidCountry`                                                                                                              |
-| P5 (`D4 = true`, `merchant ∈ {null, blank}`)             | TS4           | **lipsă**                                                                                                                                   |
-| P6 (`D5 = true`, `tx24 < 0` sau `avg < 0`)               | TS5           | `shouldThrowForInvalidHistory` (doar `tx24 < 0`)                                                                                            |
-| P7 (`D6 = true`, seturi `null`)                          | TS6           | `shouldThrowForNullRiskSet` (doar `highRisk = null`)                                                                                        |
-| P8 (`D7 = true`, blacklist)                              | TS7           | `shouldBlockBlacklistedMerchant`                                                                                                            |
-| P1 (drum de bază, `APPROVED` scor `0`)                   | TS9           | `shouldApproveSafeTransaction`                                                                                                              |
-| P13 (`D12 = false`, iterator epuizat)                    | TS9           | `shouldApproveSafeTransaction` (`country = "RO" ∉ {"IR"}`); `shouldHandleHighRiskCountryNotMatched` &mdash; **picat** (`RO ∉ {"IR", "RU"}`) |
-| P14 (`D13 = true`, potrivire + `break`)                  | TS8           | `shouldBlockVeryHighRiskTransaction` (`country = "IR"`)                                                                                     |
-| P9, P16, P20 (`REQUIRES_2FA` prin `D8`, `D15`, `D19`)    | TS10          | `shouldRequire2FA`                                                                                                                          |
-| P10&ndash;P12, P19 (`MANUAL_REVIEW` prin reguli compuse) | TS11          | `shouldRequireManualReview` &mdash; **picat**                                                                                               |
-| P15, P17, P18 (`BLOCKED` prin scor `≥ 90`)               | TS8           | `shouldBlockVeryHighRiskTransaction`                                                                                                        |
-| Teste care trec                                          | 11 / 11       | 9 / 11                                                                                                                                      |
-| Drumuri acoperite din mulțimea de bază                   | 20 / 20       | 16 / 20 (≈ 80%)                                                                                                                             |
+| Drum (mulțimea de bază)                                       | Suită proprie                          | Suită AI (test corespunzător)                                     |
+|---------------------------------------------------------------|----------------------------------------|-------------------------------------------------------------------|
+| P1 (drum de bază, `APPROVED` scor `0`)                        | `P1_baseline`                          | `approvedTransaction` (P8)                                        |
+| P2 (`D1 = true`, `amount ≤ 0`)                                | `P2_invalidAmount`                     | `invalidAmount` (P1)                                              |
+| P3 (`D2 = true`, `hour ∉ [0, 23]`)                            | `P3_invalidHour`                       | `invalidHour` (P2)                                                |
+| P4 (`D3 = true`, `country ∈ {null, blank}`)                   | `P4_invalidCountry`                    | `invalidCountry` (P3)                                             |
+| P5 (`D4 = true`, `merchant ∈ {null, blank}`)                  | `P5_invalidMerchant`                   | `invalidMerchant` (P4, blank `""`)                                |
+| P6 (`D5 = true`, `tx24 < 0` sau `avg < 0`)                    | `P6_invalidHistory`                    | `invalidHistory` (P5, doar `tx24 < 0`)                            |
+| P7 (`D6 = true`, seturi `null`)                               | `P7_nullRiskSets`                      | `nullRiskSet` (P6, doar `highRisk = null`)                        |
+| P8 (`D7 = true`, blacklist)                                   | `P8_blacklistedMerchant`               | `blacklistedMerchant` (P7)                                        |
+| P9 (`D8 = true`, `amount > 1000`)                             | `P9_amountAbove1000`                   | `amountAbove1000` (P9)                                            |
+| P10 (`D9 = true`, `amount > 5000`)                            | `P10_amountAbove5000`                  | `amountAbove5000` (P10)                                           |
+| P11 (`D10 = true`, `hour < 6` sau `hour > 22`)                | `P11_nightHour`                        | `riskyHour` (P11)                                                 |
+| P12 (`D11 = true`, `newBen && amount > 3000`)                 | `P12_newBeneficiaryHighAmount`         | `newBeneficiary` (P12)                                            |
+| P13 (`D12 = false`, iterator epuizat sau set gol)             | `P13_emptyHighRiskCountries_skipsLoop` | `highRiskLoopNoMatch` (P13) &ndash; **picat**                     |
+| P14 (`D13 = true`, potrivire + `break`)                       | `P14_highRiskCountryMatch`             | `highRiskCountryMatched` (P14) &ndash; **picat**                  |
+| P15 (`D14 = true`, `isHighRisk && amount > 3000`)             | `P15_highRiskCountryAndHighAmount`     | acoperit colateral de `blockedDecision` (P20)                     |
+| P16 (`D15 = true`, `tx24 > 10`)                               | `P16_manyTransactions`                 | `tooManyTransactions` (P15) &ndash; **picat**                     |
+| P17 (`D16 = true`, `avg > 0 && amount > 3·avg`)               | `P17_amountExceedsAverageMultiple`     | `anomalousAmount` (P16) &ndash; **picat**                         |
+| P18 (`D17 = true`, `BLOCKED` prin scor `≥ 90`)                | `P18_extremeRiskScore`                 | `blockedDecision` (P20)                                           |
+| P19 (`D18 = true`, `60 ≤ scor < 90`, `MANUAL_REVIEW`)         | `P19_highRiskScore`                    | `manualReviewDecision` (P19) &ndash; **picat**                    |
+| P20 (`D19 = true`, `30 ≤ scor < 60`, `REQUIRES_2FA`)          | `P20_mediumRiskScore`                  | `requires2FADecision` (P18) &ndash; **picat**                     |
+| Teste care trec                                               | 20 / 20                                | 14 / 20                                                           |
+| Drumuri acoperite cu execuții corecte (`Pn` ca țintă primară) | 20 / 20                                | 14 / 20 (`P13`, `P14`, `P16`, `P17`, `P19`, `P20` &ndash; picate) |
+| Drumuri acoperite, inclusiv colateral                         | 20 / 20                                | 19 / 20 (`P19` &ndash; rămâne neacoperit)                         |
+
+Suita AI conține și un test redundant &ndash; `approvedDecision` (P17)
+&ndash; care doar repetă scenariul `APPROVED` deja acoperit de `approvedTransaction` și
+nu adaugă o muchie nouă în CFG; observația este compatibilă cu lipsa unui test dedicat
+pentru drumul propriu `P15` (`isHighRisk && amount > 3000`), pe care AI-ul îl acoperă
+doar colateral prin `blockedDecision`.
 
 Probleme specifice ale suitei AI pe acest criteriu:
 
-1. Subacoperire pe blocurile `throw`: suita AI a colapsat din nou validările
-   `merchantCategory == null` / `blank` într-o singură categorie ignorată, iar testul
-   pentru istoric exersează doar `tx24 < 0` (`avg < 0` rămâne neacoperit). Comportamentul
-   este consistent cu cel observat în suita pentru acoperirea la nivel de instrucțiune
-   (4/6 blocuri `throw` față de 6/6 în suita proprie).
-2. Limitare aritmetică recurentă: pe cele două teste cu `amount` și `avg` mari, modelul
-   a presupus din nou activarea regulii multiplului mediei sau a pragului `> 5000`
-   fără a verifica precondițiile, omițând că pragurile se evaluează strict (`>`, nu
-   `>=`). Drumurile pentru `MANUAL_REVIEW` (`P10`&ndash;`P12`, `P19`) și pentru ramura
-   `D19 = true` cu set `highRisk` nepotrivit rămân neacoperite în execuția cu succes.
-3. Beneficiu metodologic: suita AI separă explicit cele două ramuri ale buclei `for`
-   (`shouldBlockVeryHighRiskTransaction` cu match și `shouldHandleHighRiskCountryNotMatched`
-   fără match), o distincție care apare în suita proprie doar implicit prin
-   `country = "RO"` peste setul `{"KP", "IR", "MM"}`. Această clarificare a fost
-   transferată ulterior în propriul tabel de trasabilitate `P13` &harr; `TS9` din
-   [`documentatie-testare.md`](documentatie-testare.md), unde am formulat explicit
-   echivalența între *"iterator epuizat"* și *"set gol"* la nivelul grafului fluxului de control.
+1. **Subacoperire pe blocurile `throw`**: suita AI a colapsat din nou validările
+   `merchantCategory == null` / `blank` într-un singur test (folosește doar `""`),
+   iar testul pentru istoric exersează doar `tx24 < 0` (`avg < 0` rămâne neacoperit).
+   Comportamentul este consistent cu cel observat în suita pentru acoperirea la nivel
+   de instrucțiune (4/6 condiții `throw` față de 6/6 în suita proprie).
+2. **Limitare aritmetică recurentă**: pe cele 6 teste picate, modelul a presupus
+   activarea regulilor aditive fără a verifica precondițiile stricte (`>`, nu `>=`)
+   sau a calculat greșit scorul total. Drumurile `P13`, `P14`, `P16`, `P17`, `P19`,
+   `P20` ratează ținta primară prin oracol incorect, iar `P19` rămâne neacoperit
+   nici colateral &ndash; nici un test care trece nu produce un scor în intervalul
+   `[60, 89]`.
+3. **Beneficiu metodologic**: suita AI separă explicit cele două ramuri ale buclei
+   `for` (`highRiskCountryMatched` cu match și `highRiskLoopNoMatch` fără match),
+   o distincție pe care suita proprie o face explicit prin perechea
+   `P13_emptyHighRiskCountries_skipsLoop` (set gol &rarr; `D12 = false` la primul
+   apel) &harr; `P14_highRiskCountryMatch` (match &rarr; `D13 = true`). Echivalența
+   între "iterator epuizat" și "set gol" la nivelul grafului fluxului de control
+   este formulată explicit în nota pe `P13` din
+   [`documentatie-testare.md`](documentatie-testare.md).
 
 ## Bibliografie
 
